@@ -2194,6 +2194,35 @@ export class Client extends GameShell {
     }
 
     /**
+     * Use an inventory item on an item on the ground (OPOBJU), as USEHELD_ONOBJ does
+     */
+    useItemOnGroundItem(itemSlot: number, worldX: number, worldZ: number, groundItemId: number, interfaceId: number = 3214): ClientActionResult {
+        if (!this.ingame || !this.out || !this.localPlayer) {
+            return { success: false, reason: 'not_in_game' };
+        }
+        const rawItemId = IfType.list[interfaceId]?.linkObjType?.[itemSlot];
+        if (!rawItemId || rawItemId <= 0) {
+            return { success: false, reason: 'item_not_found' };
+        }
+        const itemId = ObjType.list(rawItemId - 1).id;
+        const sceneX = worldX - this.mapBuildBaseX;
+        const sceneZ = worldZ - this.mapBuildBaseZ;
+        if (sceneX < 0 || sceneX >= 104 || sceneZ < 0 || sceneZ >= 104) {
+            return { success: false, reason: 'out_of_scene' };
+        }
+        const routed = this.tryMove(this.localPlayer.routeX[0], this.localPlayer.routeZ[0], sceneX, sceneZ, false, 0, 0, 0, 0, 0, 2)
+            || this.tryMove(this.localPlayer.routeX[0], this.localPlayer.routeZ[0], sceneX, sceneZ, false, 1, 1, 0, 0, 0, 2);
+        this.writePacketOpcode(ClientProt.OPOBJU);
+        this.out.p2(worldX);
+        this.out.p2(worldZ);
+        this.out.p2(groundItemId);
+        this.out.p2(itemId);
+        this.out.p2(itemSlot);
+        this.out.p2(interfaceId);
+        return { success: true, routed };
+    }
+
+    /**
      * Use an inventory item on a location (OPLOCU)
      */
     useItemOnLoc(itemSlot: number, worldX: number, worldZ: number, locId: number, interfaceId: number = 3214): ClientActionResult {

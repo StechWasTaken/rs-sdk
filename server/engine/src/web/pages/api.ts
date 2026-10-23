@@ -168,10 +168,11 @@ export function handleExportCollisionApi(req: Request, url: URL): Response | nul
 
         console.log(`Exported ${tiles.length} tiles with collision, ${zones.length} zones allocated`);
 
-        // Scan loc map files for doors/gates (wall-shaped locs with "Open" option).
+        // Scan loc map files for doors/gates (wall-shaped locs with "Open" option, and the doors and
+        // gates that are locs: in a diagonal wall or a centrepiece, with their size).
         // The SDK uses this list to remove wall collision at door positions,
         // so the pathfinder routes through doorways but respects permanent walls.
-        const doors: Array<[number, number, number, number, number, number]> = [];
+        const doors: Array<[number, number, number, number, number, number] | [number, number, number, number, number, number, number, number]> = [];
         const MAPSQUARE_SIZE = 64;
         const LINK_BELOW = 0x2;
 
@@ -235,17 +236,23 @@ export function handleExportCollisionApi(req: Request, url: URL): Response | nul
                     const angle = info & 0x3;
                     const locLayer = rsmod.locShapeLayer(shape);
 
-                    // Only interested in wall-shaped locs that are doors/gates
-                    if (locLayer !== LocLayer.WALL) continue;
+                    // Only interested in wall-shaped locs that are doors/gates, and doors and gates that are
+                    // locs (a diagonal wall's door, shape 9: Juliet's house, the Wizards' Tower; double gates)
+                    const locDoor = locLayer === LocLayer.GROUND;
+                    if (locLayer !== LocLayer.WALL && !locDoor) continue;
 
                     const type = LocType.get(locId);
                     if (!type || !type.blockwalk) continue;
+                    // chests, drawers and wardrobes open too
+                    if (locDoor && !/door|gate/i.test(type.name ?? '')) continue;
 
                     // Check if this loc has an "Open" interaction option
                     const hasOpen = type.op?.some((o: string | null) => o && /^open$/i.test(o));
                     if (!hasOpen) continue;
 
-                    doors.push([actualLevel, absoluteX, absoluteZ, shape, angle, type.blockrange ? 1 : 0]);
+                    doors.push(locDoor
+                        ? [actualLevel, absoluteX, absoluteZ, shape, angle, type.blockrange ? 1 : 0, type.width, type.length]
+                        : [actualLevel, absoluteX, absoluteZ, shape, angle, type.blockrange ? 1 : 0]);
                 }
                 locIdOffset = locPacket.gsmarts();
             }

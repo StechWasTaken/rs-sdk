@@ -13,6 +13,25 @@ export const SKILL_NAMES: string[] = [
 // Interface IDs for common inventories
 export const INVENTORY_INTERFACE_ID = 3214; // Main backpack inventory
 export const EQUIPMENT_INTERFACE_ID = 1688; // Equipped items
+export const QUESTLIST_INTERFACE_ID = 638; // Quest tab: one text button per quest, coloured by progress
+export const QUESTJOURNAL_INTERFACE_ID = 8134; // The quest journal a quest-tab click opens
+export const QUESTJOURNAL_TITLE_ID = 8144; // questjournal_scroll:ifquestname
+export const QUESTJOURNAL_SCROLL_ID = 8143; // questjournal_scroll:scroll, the journal's lines
+
+/** A quest in the quest tab. The server colours it red (not started), yellow (started) or green (done). */
+export interface QuestEntry {
+    name: string;
+    status: 'not_started' | 'started' | 'done';
+    /** IF_BUTTON this to open its journal (`sdk.sendClickComponent`). */
+    componentId: number;
+}
+
+/** The open quest journal: the server's own account of the quest so far and what to do next. */
+export interface QuestJournal {
+    title: string;
+    /** One per line; steps already done (struck through in the game) start with "✓ ". */
+    lines: string[];
+}
 
 // Shop interface IDs
 export const SHOP_TEMPLATE_SIDE_ID = 3822; // Side panel with player inventory for selling
@@ -428,6 +447,12 @@ export interface BotState {
     menuActions: MenuAction[];
     shop: ShopState;
     bank: BankState;
+    /** Every quest in the quest tab with its progress (empty before the tab is sent). */
+    quests: QuestEntry[];
+    /** The quest points the game counts (varp 101, %qp: the quest tab's "Quest Points"). */
+    questPoints: number;
+    /** The quest journal, while one is open. */
+    questJournal: QuestJournal | null;
     trade: TradeState;
     ge?: GEState | null;
     inGame: boolean;
@@ -510,6 +535,7 @@ export type BotAction =
     | { type: 'spellOnPlayer'; playerIndex: number; spellComponent: number; reason: string }
     | { type: 'spellOnItem'; slot: number; spellComponent: number; reason: string }
     | { type: 'spellOnGroundItem'; x: number; z: number; itemId: number; spellComponent: number; reason: string }
+    | { type: 'useItemOnGroundItem'; itemSlot: number; x: number; z: number; itemId: number; reason: string }
     | { type: 'setTab'; tabIndex: number; reason: string }
     | { type: 'say'; message: string; reason: string }
     | { type: 'privateMessage'; targetName: string; message: string; reason: string }

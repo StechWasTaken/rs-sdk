@@ -315,6 +315,21 @@ export interface BankItem {
     count: number;
 }
 
+/** A quest in the quest tab. The server colours it red (not started), yellow (started) or green (done). */
+export interface QuestEntry {
+    name: string;
+    status: 'not_started' | 'started' | 'done';
+    /** IF_BUTTON this to open its journal (`sdk.sendClickComponent`). */
+    componentId: number;
+}
+
+/** The open quest journal: the server's own account of the quest so far and what to do next. */
+export interface QuestJournal {
+    title: string;
+    /** One per line; steps already done (struck through in the game) start with "✓ ". */
+    lines: string[];
+}
+
 export interface BankState {
     isOpen: boolean;
     items: BankItem[];
@@ -582,6 +597,12 @@ export interface BotWorldState {
     interface: InterfaceState;
     shop: ShopState;
     bank: BankState;
+    /** Every quest in the quest tab with its progress (empty before the tab is sent; older clients leave it out). */
+    quests?: QuestEntry[];
+    /** The quest points the game counts (varp 101, %qp); older clients leave it out. */
+    questPoints?: number;
+    /** The quest journal, while one is open. */
+    questJournal?: QuestJournal | null;
     /** Absent when the connected client predates trade support. */
     trade?: TradeState;
     /** Null outside the exchange; absent on older clients. */
@@ -639,6 +660,7 @@ export type BotAction =
     | { type: 'spellOnPlayer'; playerIndex: number; spellComponent: number; reason: string }
     | { type: 'spellOnItem'; slot: number; spellComponent: number; reason: string }
     | { type: 'spellOnGroundItem'; x: number; z: number; itemId: number; spellComponent: number; reason: string }
+    | { type: 'useItemOnGroundItem'; itemSlot: number; x: number; z: number; itemId: number; reason: string }
     | { type: 'setTab'; tabIndex: number; reason: string }
     | { type: 'bankDeposit'; slot: number; amount: number; reason: string }
     | { type: 'bankWithdraw'; slot: number; amount: number; reason: string }

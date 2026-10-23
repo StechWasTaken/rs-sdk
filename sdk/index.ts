@@ -1214,6 +1214,11 @@ export class BotSDK {
         return this.sendAction({ type: 'useItemOnLoc', itemSlot, x, z, locId, reason: 'SDK' });
     }
 
+    /** Use an inventory item on an item on the ground (OPOBJU): `itemId` is the ground item's. */
+    async sendUseItemOnGroundItem(itemSlot: number, x: number, z: number, itemId: number): Promise<ActionResult> {
+        return this.sendAction({ type: 'useItemOnGroundItem', itemSlot, x, z, itemId, reason: 'SDK' });
+    }
+
     /** Use an inventory item on an NPC. */
     async sendUseItemOnNpc(itemSlot: number, npcIndex: number): Promise<ActionResult> {
         return this.sendAction({ type: 'useItemOnNpc', itemSlot, npcIndex, reason: 'SDK' });

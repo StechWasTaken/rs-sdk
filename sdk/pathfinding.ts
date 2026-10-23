@@ -8,7 +8,8 @@ let initialized = false;
 interface CollisionData {
     tiles: Array<[number, number, number, number]>;
     zones: Array<[number, number, number]>;
-    doors?: Array<[number, number, number, number, number, number]>; // [level, x, z, shape, angle, blockrange]
+    // [level, x, z, shape, angle, blockrange, width?, length?]: width and length for the loc-shaped doors
+    doors?: Array<[number, number, number, number, number, number, number?, number?]>;
 }
 
 export interface DoorInfo {
@@ -18,6 +19,25 @@ export interface DoorInfo {
     shape: number;
     angle: number;
     blockrange: boolean;
+    /** Size of a loc-shaped door (a diagonal wall's door, a double gate), unrotated; 1 by default. */
+    width?: number;
+    length?: number;
+}
+
+/**
+ * A door in a diagonal wall (shape 9, Juliet's house, the Wizards' Tower) or a centrepiece door or gate
+ * (10-11) is a loc, not a wall: it blocks its whole tile (or tiles), and changeWall does nothing for it.
+ */
+const isLocDoor = (shape: number) => shape >= 9 && shape <= 11;
+
+/** Put a door's collision back (add) or take it out, as the server does when it closes or opens. */
+function setDoorCollision(door: DoorInfo, add: boolean): void {
+    if (isLocDoor(door.shape)) {
+        const [w, l] = door.angle & 1 ? [door.length ?? 1, door.width ?? 1] : [door.width ?? 1, door.length ?? 1];
+        rsmod.changeLoc(door.x, door.z, door.level, w, l, door.blockrange, false, add);
+    } else {
+        rsmod.changeWall(door.x, door.z, door.level, door.angle, door.shape, door.blockrange, false, add);
+    }
 }
 
 interface TemporaryDoorBlock {
@@ -118,11 +138,11 @@ export function initPathfinding(): void {
     // Remove wall collision at door/gate positions so the pathfinder
     // routes through doorways while still respecting permanent walls.
     // Uses rsmod.changeWall(add=false) — the same method the server uses
-    // when doors are opened at runtime.
+    // when doors are opened at runtime (changeLoc for loc-shaped doors).
     let doorCount = 0;
     let skippedOneWay = 0;
     if (data.doors) {
-        for (const [level, x, z, shape, angle, blockrange] of data.doors) {
+        for (const [level, x, z, shape, angle, blockrange, width, length] of data.doors) {
             const key = doorKey(level, x, z);
 
             // Skip one-way doors — keep their wall collision so the pathfinder
@@ -132,10 +152,9 @@ export function initPathfinding(): void {
                 continue;
             }
 
-            rsmod.changeWall(x, z, level, angle, shape, !!blockrange, false, false);
-            doorIndex.set(key, {
-                level, x, z, shape, angle, blockrange: !!blockrange
-            });
+            const door: DoorInfo = { level, x, z, shape, angle, blockrange: !!blockrange, ...(isLocDoor(shape) ? { width: width ?? 1, length: length ?? 1 } : {}) };
+            setDoorCollision(door, false);
+            doorIndex.set(key, door);
             doorCount++;
         }
     }
@@ -172,11 +191,7 @@ export function findLongPath(
     const applied: DoorInfo[] = [];
     try {
         for (const door of blockedDoors) {
-            rsmod.changeWall(
-                door.x, door.z, door.level,
-                door.angle, door.shape, door.blockrange,
-                false, true
-            );
+            setDoorCollision(door, true);
             applied.push(door);
         }
 
@@ -187,13 +202,7 @@ export function findLongPath(
 
         return unpackWaypoints(waypointsRaw);
     } finally {
-        for (const door of applied) {
-            rsmod.changeWall(
-                door.x, door.z, door.level,
-                door.angle, door.shape, door.blockrange,
-                false, false
-            );
-        }
+        for (const door of applied) setDoorCollision(door, false);
     }
 }
 

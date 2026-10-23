@@ -597,6 +597,60 @@ export class BotActions {
     }
 
     /**
+     * Use an inventory item on an item on the ground (OPOBJU), e.g. Clock Tower's bucket of water on the
+     * black cog. Walks next to it first. Success: the game reacted (a message, a dialog, an animation, the
+     * inventory or the ground item changed); "Nothing interesting happens." is a failure.
+     */
+    async useItemOnGroundItem(
+        item: InventoryItem | string | RegExp,
+        target: GroundItem | string | RegExp,
+        options: { timeout?: number } = {}
+    ): Promise<UseItemOnLocResult> {
+        const { timeout = 10000 } = options;
+        await this.dismissBlockingUI();
+        const held = this.helpers.resolveInventoryItem(item, /./);
+        if (!held) {
+            return { success: false, message: `Item not found in inventory: ${item}`, reason: 'item_not_found' };
+        }
+        const ground = this.helpers.resolveGroundItem(target);
+        if (!ground) {
+            return { success: false, message: `Ground item not found nearby: ${target}`, reason: 'loc_not_found' };
+        }
+        if (ground.distance > 1) {
+            const walk = await this.walkTo(ground.x, ground.z, 1);
+            if (!walk.success) {
+                return { success: false, message: `Cannot reach ${ground.name}: ${walk.message}`, reason: 'cant_reach' };
+            }
+        }
+        const msgBaseline = this.helpers.getMessageTick();
+        const before = this.helpers.inventorySignature(this.sdk.getState());
+        const groundThere = (state: any) => (state.groundItems ?? []).some((g: GroundItem) => g.x === ground.x && g.z === ground.z && g.id === ground.id);
+        const result = await this.sdk.sendUseItemOnGroundItem(held.slot, ground.x, ground.z, ground.id);
+        if (!result.success) {
+            return { success: false, message: result.message };
+        }
+        let said = '';
+        try {
+            await this.sdk.waitForCondition(state => {
+                // the game's answer, not a level-up from a fight going on meanwhile
+                const m = state.gameMessages.find(m => this.helpers.isMessageAfter(m, msgBaseline) && !m.sender && !/advanced (?:an? )?\w+ level|^congratulations/i.test(m.text));
+                if (m) { said = m.text; return true; }
+                return state.dialog.isOpen || !!state.interface?.isOpen || (state.player?.animId ?? -1) !== -1
+                    || this.helpers.inventorySignature(state) !== before || !groundThere(state);
+            }, timeout);
+        } catch {
+            return { success: false, message: `Timeout using ${held.name} on ${ground.name}`, reason: 'timeout' };
+        }
+        if (/can'?t reach|cannot reach/i.test(said)) {
+            return { success: false, message: `Cannot reach ${ground.name}`, reason: 'cant_reach' };
+        }
+        if (/^nothing interesting happens/i.test(said)) {
+            return { success: false, message: `Nothing interesting happens: ${held.name} does nothing on ${ground.name}` };
+        }
+        return { success: true, message: `Used ${held.name} on ${ground.name}` };
+    }
+
+    /**
      * Use an inventory item on a nearby NPC (e.g., bones on altar keeper, item on NPC).
      * Walks to the NPC first (handling doors), then uses the item.
      */

@@ -325,6 +325,32 @@ export function useItemOnLoc(c: LiteClient, itemSlot: number, worldX: number, wo
     return { success: true, routed };
 }
 
+/** OPOBJU: an inventory item used on an item on the ground (Clock Tower's bucket of water on the black cog). */
+export function useItemOnGroundItem(c: LiteClient, itemSlot: number, worldX: number, worldZ: number, groundItemId: number, interfaceId: number = INVENTORY_INTERFACE_ID): ClientActionResult {
+    if (!c.isInGame() || !c.localPlayer) {
+        return { success: false, reason: 'not_in_game' };
+    }
+    const itemId = slotItemId(interfaceId, itemSlot);
+    if (!itemId) {
+        return { success: false, reason: 'item_not_found' };
+    }
+    const dest = c.toSceneTile(worldX, worldZ);
+    if (!dest) {
+        return { success: false, reason: 'out_of_scene' };
+    }
+    // as the client's USEHELD_ONOBJ: onto the tile, else next to it (an item on a table)
+    const routed = tryMoveTo(c, dest.x, dest.z, 0, 0, 0, 0, 0)
+        || tryMoveTo(c, dest.x, dest.z, 1, 1, 0, 0, 0);
+    c.writeOpcode(ClientProt.OPOBJU);
+    c.out.p2(worldX);
+    c.out.p2(worldZ);
+    c.out.p2(groundItemId);
+    c.out.p2(itemId);
+    c.out.p2(itemSlot);
+    c.out.p2(interfaceId);
+    return { success: true, routed };
+}
+
 export function spellOnNpc(c: LiteClient, npcIndex: number, spellComponent: number): ClientActionResult {
     if (!c.isInGame() || !c.localPlayer) {
         return { success: false, reason: 'not_in_game' };

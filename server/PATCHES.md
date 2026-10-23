@@ -93,7 +93,9 @@ survival) is described in the project memory; this file is the human-readable ch
       can't detach the replacement. On conflict keep ours.
 - [ ] **`src/web/`** modular split: `websocket.ts` (`/gateway` WS proxy → gateway on :7780,
       `isAgentProxy`), `pages/api.ts` (`/api/exportCollision` — must read the in-engine TS
-      routefinder, NOT the removed WASM; discovers mapsquares from maps **zip ∪ dir**;
+      routefinder, NOT the removed WASM; discovers mapsquares from maps **zip ∪ dir**; its doors
+      include the loc-shaped ones (a diagonal wall's door, shape 9, and centrepiece doors/gates,
+      10-11, with width and length), which `sdk/pathfinding.ts` opens with `changeLoc`;
       `/api/screenshot`), `pages/client.ts` (serves `view/bot.ejs` at `/` and `/bot`),
       `pages/hiscores.ts` + `src/web/hiscoresServer.ts` + `src/hiscores.ts` (custom hiscores;
       **profile query param XSS-sanitized**), `pages/screenshots.ts`, `pages/static.ts`.

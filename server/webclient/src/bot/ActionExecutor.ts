@@ -272,6 +272,13 @@ export class ActionExecutor {
                         'Failed to cast spell on item'
                     );
 
+                case 'useItemOnGroundItem':
+                    return this.wrapClientAction(
+                        this.client.useItemOnGroundItem(action.itemSlot, action.x, action.z, action.itemId),
+                        `Using item on ground item ${action.itemId} at (${action.x}, ${action.z})`,
+                        'Failed to use item on ground item'
+                    );
+
                 case 'spellOnGroundItem':
                     return this.wrapClientAction(
                         this.client.spellOnGroundItem(action.x, action.z, action.itemId, action.spellComponent),
@@ -531,6 +538,7 @@ export function formatAction(action: BotAction): string {
         case 'clickComponentWithOption': return `Click component ${action.componentId} option ${action.optionIndex}`;
         case 'useItemOnItem': return `Use slot ${action.sourceSlot} on ${action.targetSlot}`;
         case 'useItemOnNpc': return `Use slot ${action.itemSlot} on NPC #${action.npcIndex}`;
+        case 'useItemOnGroundItem': return `Use slot ${action.itemSlot} on ground item ${action.itemId} at (${action.x}, ${action.z})`;
         case 'spellOnNpc': return `Cast ${action.spellComponent} on NPC #${action.npcIndex}`;
         case 'spellOnPlayer': return `Cast ${action.spellComponent} on player #${action.playerIndex}`;
         case 'shopBuy': return `Buy slot ${action.slot} x${action.amount}`;

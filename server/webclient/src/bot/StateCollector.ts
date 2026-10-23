@@ -19,6 +19,12 @@ import {
     SKILL_NAMES,
     INVENTORY_INTERFACE_ID,
     EQUIPMENT_INTERFACE_ID,
+    QUESTLIST_INTERFACE_ID,
+    QUESTJOURNAL_INTERFACE_ID,
+    QUESTJOURNAL_TITLE_ID,
+    QUESTJOURNAL_SCROLL_ID,
+    type QuestEntry,
+    type QuestJournal,
     SHOP_TEMPLATE_INV_ID,
     SHOP_TEMPLATE_SIDE_INV_ID,
     TRADE_MAIN_ID,
@@ -180,6 +186,9 @@ export class BotStateCollector implements ScanProvider {
             menuActions: this.collectMenuActions(),
             shop: this.collectShopState(),
             bank: this.collectBankState(),
+            quests: this.collectQuests(),
+            questPoints: c.var?.[101] ?? 0, // %qp, transmitted: what the quest tab shows
+            questJournal: this.collectQuestJournal(),
             trade: this.collectTradeState(),
             ge: collectGEState(IfType.list, c.mainModalId ?? -1),
             inGame: c.ingame || false,
@@ -1448,6 +1457,61 @@ export class BotStateCollector implements ScanProvider {
         }
 
         return shopState;
+    }
+
+    /**
+     * The quest tab: each quest is a text button whose colour the server sets
+     * from the quest's progress varp (send_quest_progress_colour: red not
+     * started, yellow started, green done). The varps themselves are not
+     * transmitted, so the colour is the client's only record of it.
+     */
+    private collectQuests(): QuestEntry[] {
+        const out: QuestEntry[] = [];
+        try {
+            const visit = (comId: number, depth: number): void => {
+                const com = IfType.list[comId] as any;
+                if (!com || depth > 3) return;
+                if (com.type === 4 && com.buttonType === 1 && com.text) {
+                    const r = (com.colour >> 16) & 0xff, g = (com.colour >> 8) & 0xff;
+                    out.push({
+                        name: String(com.text).replace(/@\w+@/g, '').trim(),
+                        status: g === 0 ? 'not_started' : r === 0 ? 'done' : 'started',
+                        componentId: comId
+                    });
+                }
+                for (const child of com.children ?? []) visit(child, depth + 1);
+            };
+            visit(QUESTLIST_INTERFACE_ID, 0);
+        } catch {
+            // the tab not loaded yet
+        }
+        return out;
+    }
+
+    /** The quest journal while it is open: its title and lines, done steps marked. */
+    private collectQuestJournal(): QuestJournal | null {
+        const c = this.client as any;
+        if ((c.mainModalId ?? -1) !== QUESTJOURNAL_INTERFACE_ID) return null;
+        try {
+            const texts: { y: number; text: string; done: boolean }[] = [];
+            const title = String((IfType.list[QUESTJOURNAL_TITLE_ID] as any)?.text ?? '').replace(/@\w+@/g, '').trim();
+            // the lines are in the scroll layer (the window's own buttons are not)
+            const visit = (comId: number, depth: number, y: number): void => {
+                const com = IfType.list[comId] as any;
+                if (!com || depth > 3) return;
+                if (com.type === 4 && typeof com.text === 'string') {
+                    const text = com.text.replace(/@\w+@/g, '').trim();
+                    if (text) texts.push({ y, text, done: com.text.includes('@str@') });
+                }
+                const children: number[] = com.children ?? [];
+                for (let i = 0; i < children.length; i++) visit(children[i], depth + 1, y + (com.childY?.[i] ?? 0));
+            };
+            visit(QUESTJOURNAL_SCROLL_ID, 0, 0);
+            texts.sort((a, b) => a.y - b.y);
+            return { title, lines: texts.map(t => (t.done ? `✓ ${t.text}` : t.text)) };
+        } catch {
+            return null;
+        }
     }
 
     private collectBankState(): BankState {
