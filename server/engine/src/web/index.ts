@@ -368,6 +368,24 @@ export async function startManagementWeb() {
             }),
             // rolling per-phase cycle timings over the last ~300 ticks
             '/tickstats': () => Response.json({ ...World.getTickStats(), web: getWebStats() }),
+            // rs-sdk (doomsayer): the world's tick length in ms, read and set while it runs, as ::speed does.
+            // GET: { tickRate, configured }; POST ?ms=: set it (100-2000). Back to NODE_TICKRATE on a restart.
+            '/tickrate': (req: Request) => {
+                const configured = Environment.NODE_TICKRATE;
+                if (req.method === 'POST') {
+                    const ms = parseInt(new URL(req.url).searchParams.get('ms') ?? '', 10);
+                    if (!Number.isFinite(ms) || ms < 100 || ms > 2000) {
+                        return Response.json({ error: 'ms must be 100 to 2000' }, { status: 400 });
+                    }
+                    if (World.tickRate <= 0) {
+                        return Response.json({ error: 'the world is shutting down' }, { status: 409 });
+                    }
+                    World.tickRate = ms;
+                } else if (req.method !== 'GET') {
+                    return new Response('Method Not Allowed', { status: 405, headers: { Allow: 'GET, POST' } });
+                }
+                return Response.json({ tickRate: World.tickRate, configured });
+            },
             '/memory': (req: Request) => Response.json(getMemoryDiagnostics(new URL(req.url).searchParams.has('history'))),
             '/memory/heap': async () => {
                 const { heapStats } = await import('bun:jsc');
