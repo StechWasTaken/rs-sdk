@@ -20,7 +20,7 @@ import { botManager } from './api/index.js';
 import { initPathfinding } from '../sdk/pathfinding.js';
 import { marketTool, readMarket } from './market-tools.js';
 import { installExecutionConsoleCapture } from './console-capture.js';
-import { executeCode, botExecutions } from './execute-code.js';
+import { executeCode, executionError, botExecutions, EXECUTE_CODE_OUTPUT_SCHEMA, type WorldOption } from './execute-code.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -29,13 +29,21 @@ const __dirname = dirname(__filename);
 const server = new Server(
   {
     name: 'rs-agent-bot',
-    version: '2.0.0'
+    version: '2.1.0'
   },
   {
     capabilities: {
       resources: {},
       tools: {}
-    }
+    },
+    instructions: [
+      'Plays an MMO through bots. execute_code runs TypeScript against one bot with `bot` (high-level actions) and `sdk` (state + low-level packets) in scope; the full API is the SDK API Reference resource (sdk/API.md).',
+      'Results carry structuredContent { ok, result, logs, error: { kind, message } | null, world }. error.kind is one of exception, timeout, superseded, cancelled, not_connected, invalid_input, unserializable_result.',
+      'Pass values through `args` instead of splicing them into `code`. Reusable routines belong in a module file run via `script`.',
+      'One execution per bot: a new call for the same bot cancels the running one (error.kind "superseded"), so never run two calls for one bot in parallel. Different bots run concurrently.',
+      'Keep tight game loops inside one execute_code call: state reads there are synchronous and timers work. Set world: "none" when calling it in a loop.',
+      'Open shops/banks block inventory actions; close them with bot.closeInterface(). Skill dialog options are not in product order; click by text.',
+    ].join('\n'),
   }
 );
 
@@ -90,7 +98,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       marketTool,
       {
         name: 'execute_code',
-        description: 'Execute TypeScript code on a bot. Auto-connects using credentials from bots/{name}/bot.env. The code runs in an async context with bot (BotActions), sdk (BotSDK), and Spells (spell component ids) available. A new call for the same bot cancels the one still running. Timeout or explicit MCP cancellation stops SDK dispatches and observations, including inside high-level actions. Keep interactive snippets short; use a saved script with the existing browser client for long loops.',
+        description: 'Execute TypeScript on a bot: inline `code`, or a module file via `script`. Auto-connects using credentials from bots/{name}/bot.env. Code runs in an async function with bot (BotActions), sdk (BotSDK), Spells (spell component ids) and args (your `args` JSON) in scope; `return` a JSON value. A new call for the same bot cancels the one still running. Timeout or explicit MCP cancellation stops SDK dispatches and observations, including inside high-level actions. Returns structuredContent { ok, result, logs, error, elapsedMs, world }.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -100,15 +108,28 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             code: {
               type: 'string',
-              description: 'TypeScript code to execute (type annotations are stripped before running). Available globals: bot (BotActions), sdk (BotSDK), Spells (e.g. Spells.HIGH_ALCHEMY). Example: "const r = await bot.chopTree(); return r;". A world-state summary (position, skills, inventory, nearby entities, open dialogs, new messages) is appended to every result, so there is no need to return sdk.getState() just to look around.'
+              description: 'TypeScript function body (type annotations are stripped before running). Globals: bot, sdk, Spells (e.g. Spells.HIGH_ALCHEMY), args. Example: "const r = await bot.chopTree(); return r;". A world-state summary is included with every result, so there is no need to return sdk.getState() just to look around. Provide exactly one of code or script.'
+            },
+            script: {
+              type: 'string',
+              description: 'Path (absolute, or relative to the repo root) of a module whose default export is `async ({ bot, sdk, args }) => result`, e.g. "bots/mybot/chop.ts". Reloaded whenever the file changes. Provide exactly one of code or script.'
+            },
+            args: {
+              description: 'Any JSON value, exposed to the code as `args` (ctx.args for a script). Use it instead of interpolating values into `code`.'
+            },
+            world: {
+              type: 'string',
+              enum: ['none', 'brief', 'full'],
+              description: 'World state to include with the result: brief (default; nearby lists capped at 10), full (capped at 50), or none.'
             },
             timeout: {
               type: 'number',
               description: 'Execution timeout in minutes (default: 2, max: 60).'
             }
           },
-          required: ['bot_name', 'code']
-        }
+          required: ['bot_name']
+        },
+        outputSchema: EXECUTE_CODE_OUTPUT_SCHEMA
       },
       {
         name: 'disconnect_bot',
@@ -165,19 +186,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
       }
 
       case 'execute_code': {
-        const botName = args?.bot_name as string;
-        const code = args?.code as string;
+        const botName = args?.bot_name;
+        const code = args?.code;
+        const script = args?.script;
+        const world = args?.world ?? 'brief';
 
-        if (!botName) {
-          return errorResponse('bot_name is required');
-        }
-
-        if (!code) {
-          return errorResponse('code is required');
-        }
+        if (typeof botName !== 'string' || !botName) return executionError('invalid_input', 'bot_name is required');
+        if ((code === undefined) === (script === undefined)) return executionError('invalid_input', 'Provide exactly one of code or script');
+        if (code !== undefined && (typeof code !== 'string' || !code)) return executionError('invalid_input', 'code must be a non-empty string');
+        if (script !== undefined && (typeof script !== 'string' || !script)) return executionError('invalid_input', 'script must be a non-empty path');
+        if (!['none', 'brief', 'full'].includes(world as string)) return executionError('invalid_input', 'world must be none, brief or full');
 
         const timeoutMinutes = Math.min(Math.max((args?.timeout as number) || 2, 0.1), 60);
-        return executeCode(botManager, botName, code, timeoutMinutes * 60_000, extra.signal);
+        return executeCode(botManager, botName, code ?? { script: script as string }, timeoutMinutes * 60_000, extra.signal, botExecutions,
+          { args: args?.args, world: world as WorldOption });
       }
 
       default:

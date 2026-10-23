@@ -12,6 +12,9 @@ import zlib from 'zlib';
 import { parentPort } from 'worker_threads';
 
 import type { SpriteRequest, SpriteResponse } from '#/web/sprites/SpriteProtocol.js';
+import { startMemoryDiagnostics } from '#/util/MemoryDiagnostics.js';
+
+startMemoryDiagnostics('sprites');
 
 if (!parentPort) throw new Error('This file must be run as a worker thread.');
 

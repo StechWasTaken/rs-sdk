@@ -230,20 +230,19 @@ export default class Player extends PathingEntity {
         }
 
         let saved = 0;
+        const varpCountPos = sav.pos;
+        sav.p2(0); // backfill the count after writing the nonzero permanent vars
         for (let id = 0; id < this.vars.length; id++) {
-            const varp = VarPlayerType.get(id);
-            if (varp.scope === VarPlayerType.SCOPE_PERM && this.vars[id] !== 0) {
+            if (this.vars[id] !== 0 && VarPlayerType.get(id).scope === VarPlayerType.SCOPE_PERM) {
+                sav.p2(id);
+                sav.pVarInt(this.vars[id]);
                 saved++;
             }
         }
+        const varpEndPos = sav.pos;
+        sav.pos = varpCountPos;
         sav.p2(saved);
-        for (let id = 0; id < this.vars.length; id++) {
-            const varp = VarPlayerType.get(id);
-            if (varp.scope === VarPlayerType.SCOPE_PERM && this.vars[id] !== 0) {
-                sav.p2(id);
-                sav.pVarInt(this.vars[id]);
-            }
-        }
+        sav.pos = varpEndPos;
 
         let invCount = 0;
         const invStartPos = sav.pos;
@@ -307,8 +306,16 @@ export default class Player extends PathingEntity {
             sav.p4(this.levelPlaytime[i]);
         }
 
+        // v10: keep raw tick counters above for compatibility/auditing, and
+        // persist independent durations so future tick-rate changes are safe.
+        sav.p8(BigInt(this.playtimeMs));
+        for (let i = 0; i < 21; i++) sav.p8(BigInt(this.levelPlaytimeMs[i]));
+
         sav.p4(Packet.getcrc(sav.data, 0, sav.pos));
-        const bytes = sav.data.subarray(0, sav.pos);
+        // Snapshots outlive this call (SQLite, worker messages, pending logouts).
+        // Give them owned bytes so the 30 KiB serialization packet can be reused.
+        const bytes = sav.data.slice(0, sav.pos);
+        sav.release();
         if (checkpoint && playerSaveStore()) World.checkpointPlayers(this, bytes);
         return bytes;
     }
@@ -334,9 +341,11 @@ export default class Player extends PathingEntity {
     lastRunEnergy: number = -1;
     runweight: number = 0;
     playtime: number = 0;
+    playtimeMs: number = 0;
     // rs-sdk: playtime tick each base level was reached at, so hiscores rank by when the level
     // happened rather than when the player next logged out. 0 = reached before this was tracked.
     levelPlaytime: Int32Array = new Int32Array(21);
+    levelPlaytimeMs: Float64Array = new Float64Array(21);
     stats: Int32Array = new Int32Array(21);
     levels: Uint8Array = new Uint8Array(21);
     vars: Int32Array;
@@ -1875,6 +1884,11 @@ export default class Player extends PathingEntity {
         }
     }
 
+    advancePlaytime(tickMs: number): void {
+        this.playtime++;
+        this.playtimeMs += tickMs;
+    }
+
     addXp(stat: number, xp: number, allowMulti: boolean = true) {
         // require xp is >= 0. there is no reason for a requested addXp to be negative.
         if (xp < 0) {
@@ -1903,6 +1917,7 @@ export default class Player extends PathingEntity {
 
         if (this.baseLevels[stat] > before) {
             this.levelPlaytime[stat] = this.playtime;
+            this.levelPlaytimeMs[stat] = this.playtimeMs;
 
             if (this.levels[stat] < before) {
                 // replenish stat

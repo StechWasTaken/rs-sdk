@@ -689,7 +689,7 @@ class World {
 
         for (const player of this.playerLoop.all()) {
             try {
-                player.playtime++;
+                player.advancePlaytime(this.tickRate > 0 ? this.tickRate : World.TICKRATE);
 
                 if (this.currentTick % World.AFK_EVENTRATE === 0) {
                     player.afkEventReady = Math.random() < (player.zonesAfk() ? World.AFK_CHANCE2 : World.AFK_CHANCE1);

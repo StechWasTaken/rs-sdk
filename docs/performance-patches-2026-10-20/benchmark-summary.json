@@ -1,0 +1,80 @@
+{
+  "packet-full-8": {
+    "operations": 1000000,
+    "beforeMs": 29.179250000000025,
+    "afterMs": 12.707083000000011,
+    "speedup": 2.296298056760942
+  },
+  "packet-full-64": {
+    "operations": 1000000,
+    "beforeMs": 30.182583000000022,
+    "afterMs": 12.309500000000014,
+    "speedup": 2.4519747349608014
+  },
+  "packet-full-256": {
+    "operations": 1000000,
+    "beforeMs": 34.88654099999985,
+    "afterMs": 14.706916999999976,
+    "speedup": 2.372117895273354
+  },
+  "packet-partial-64": {
+    "operations": 1000000,
+    "beforeMs": 29.411000000000058,
+    "afterMs": 29.380792000000042,
+    "speedup": 1.0010281547209487
+  },
+  "receive-1-read-1": {
+    "operations": 100000,
+    "beforeMs": 72.5933329999998,
+    "afterMs": 2.774000000000001,
+    "speedup": 26.169189978370504
+  },
+  "receive-64-read-1": {
+    "operations": 100000,
+    "beforeMs": 79.77275000000009,
+    "afterMs": 4.457709000000023,
+    "speedup": 17.895459304319704
+  },
+  "receive-1024-read-1": {
+    "operations": 100000,
+    "beforeMs": 88.55983300000025,
+    "afterMs": 4.872875000000022,
+    "speedup": 18.17404160788033
+  },
+  "receive-65535-read-1": {
+    "operations": 100000,
+    "beforeMs": 92.17524999999932,
+    "afterMs": 72.77041600000007,
+    "speedup": 1.2666582804748463
+  },
+  "stable-zones-0-changed": {
+    "operations": 100000,
+    "beforeMs": 113.17020800000046,
+    "afterMs": 0.5454579999998259,
+    "speedup": 207.47740064319632
+  },
+  "stable-zones-1-changed": {
+    "operations": 100000,
+    "beforeMs": 56.012791999999536,
+    "afterMs": 1.155292000000145,
+    "speedup": 48.48366646699926
+  },
+  "stable-zones-20-changed": {
+    "operations": 100000,
+    "beforeMs": 62.090000000000146,
+    "afterMs": 6.412207999999964,
+    "speedup": 9.68309200200625
+  },
+  "stable-zones-100-changed": {
+    "operations": 100000,
+    "beforeMs": 65.58779200000026,
+    "afterMs": 37.378208000000086,
+    "speedup": 1.754706699689833
+  },
+  "save-2000-minimal-players": {
+    "operations": 2000,
+    "beforeMs": 3.5381669999987935,
+    "afterMs": 1.63412500000004,
+    "speedup": 2.1651752466908634
+  }
+}

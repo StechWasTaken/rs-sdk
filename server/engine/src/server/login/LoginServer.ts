@@ -107,6 +107,7 @@ export async function updateHiscores(account: HiscoreAccount | undefined, player
     let totalXp = 0;
     let totalLevel = 0;
     let totalPlaytime = 0;
+    let totalPlaytimeMs = 0;
     for (let i = 0; i < player.stats.length; i++) {
         if (!PlayerStatEnabled[i]) {
             continue;
@@ -115,6 +116,7 @@ export async function updateHiscores(account: HiscoreAccount | undefined, player
         totalXp += player.stats[i];
         totalLevel += player.baseLevels[i];
         totalPlaytime = Math.max(totalPlaytime, player.levelPlaytime[i]);
+        totalPlaytimeMs = Math.max(totalPlaytimeMs, player.levelPlaytimeMs[i]);
     }
 
     // rs-sdk: playtime is the tiebreak (level desc, playtime asc), so it's only stamped when the
@@ -123,7 +125,8 @@ export async function updateHiscores(account: HiscoreAccount | undefined, player
     // of the level-up itself; saves from before that was tracked fall back to logout playtime.
     // Total level only moves on a level-up, so it was reached at the latest stat's stamp.
     const reachedTotal = totalPlaytime || player.playtime;
-    const existing = await db.selectFrom('hiscore_large').select('type').select('level').select('value').select('playtime').where('account_id', '=', account.id).where('type', '=', 0).where('profile', '=', profile).executeTakeFirst();
+    const reachedTotalMs = totalPlaytimeMs || player.playtimeMs;
+    const existing = await db.selectFrom('hiscore_large').select('type').select('level').select('value').select('playtime').select('playtime_ms').where('account_id', '=', account.id).where('type', '=', 0).where('profile', '=', profile).executeTakeFirst();
     if (existing && (existing.value !== totalXp || existing.level !== totalLevel)) {
         await db
             .updateTable('hiscore_large')
@@ -132,6 +135,7 @@ export async function updateHiscores(account: HiscoreAccount | undefined, player
                 level: totalLevel,
                 value: totalXp,
                 playtime: existing.level === totalLevel ? existing.playtime : reachedTotal,
+                playtime_ms: existing.level === totalLevel ? existing.playtime_ms : reachedTotalMs,
                 date: toDbDate(new Date())
             })
             .where('account_id', '=', account.id)
@@ -147,7 +151,8 @@ export async function updateHiscores(account: HiscoreAccount | undefined, player
                 type: 0,
                 level: totalLevel,
                 value: totalXp,
-                playtime: reachedTotal
+                playtime: reachedTotal,
+                playtime_ms: reachedTotalMs
             })
             .execute();
     }
@@ -160,15 +165,17 @@ export async function updateHiscores(account: HiscoreAccount | undefined, player
         if (player.baseLevels[stat] >= 15) {
             const hiscoreType = stat + 1;
             const reached = player.levelPlaytime[stat] || player.playtime;
+            const reachedMs = player.levelPlaytimeMs[stat] || player.playtimeMs;
 
             // todo: can we upsert in kysely?
-            const existing = await db.selectFrom('hiscore').select('type').select('level').select('value').select('playtime').where('account_id', '=', account.id).where('type', '=', hiscoreType).where('profile', '=', profile).executeTakeFirst();
+            const existing = await db.selectFrom('hiscore').select('type').select('level').select('value').select('playtime').select('playtime_ms').where('account_id', '=', account.id).where('type', '=', hiscoreType).where('profile', '=', profile).executeTakeFirst();
             if (existing && (existing.value !== player.stats[stat] || existing.level !== player.baseLevels[stat])) {
                 update.push({
                     type: hiscoreType,
                     level: player.baseLevels[stat],
                     value: player.stats[stat],
                     playtime: existing.level === player.baseLevels[stat] ? existing.playtime : reached,
+                    playtime_ms: existing.level === player.baseLevels[stat] ? existing.playtime_ms : reachedMs,
                     date: toDbDate(new Date())
                 });
             } else if (!existing) {
@@ -178,7 +185,8 @@ export async function updateHiscores(account: HiscoreAccount | undefined, player
                     type: hiscoreType,
                     level: player.baseLevels[stat],
                     value: player.stats[stat],
-                    playtime: reached
+                    playtime: reached,
+                    playtime_ms: reachedMs
                 });
             }
         }
@@ -210,9 +218,9 @@ async function updateQuestHiscore(account: HiscoreAccount, player: Player, profi
     if (existing && existing.level === qp) {
         // unchanged
     } else if (existing) {
-        await db.updateTable('hiscore').set({ level: qp, value: qp, playtime: player.playtime, date: toDbDate(new Date()) }).where('account_id', '=', account.id).where('type', '=', QUEST_POINTS_HISCORE_TYPE).where('profile', '=', profile).execute();
+        await db.updateTable('hiscore').set({ level: qp, value: qp, playtime: player.playtime, playtime_ms: player.playtimeMs, date: toDbDate(new Date()) }).where('account_id', '=', account.id).where('type', '=', QUEST_POINTS_HISCORE_TYPE).where('profile', '=', profile).execute();
     } else {
-        await db.insertInto('hiscore').values({ account_id: account.id, profile, type: QUEST_POINTS_HISCORE_TYPE, level: qp, value: qp, playtime: player.playtime }).execute();
+        await db.insertInto('hiscore').values({ account_id: account.id, profile, type: QUEST_POINTS_HISCORE_TYPE, level: qp, value: qp, playtime: player.playtime, playtime_ms: player.playtimeMs }).execute();
     }
 }
 
@@ -348,7 +356,7 @@ export default class LoginServer {
         const existingSaveRaw = await fsp.readFile(`data/players/${profile}/${username}.sav`);
         const existingSave = PlayerLoading.load('tmp', new Packet(existingSaveRaw), null);
         const newSave = PlayerLoading.load('tmp', new Packet(newSaveBytes), null);
-        if (existingSave.playtime > newSave.playtime) {
+        if (existingSave.playtime > newSave.playtime || existingSave.playtimeMs > newSave.playtimeMs) {
             // Int32, 1 per tick logged in. Should wrap only after insane amount of years.
             return true;
         }

@@ -96,8 +96,10 @@ export class MarketStore {
         this.db.query('UPDATE offers SET remaining=?,state=?,items=?,coins=?,gross=?,tax=?,slot=?,filled=? WHERE id=?').run(o.remaining, o.state, o.items, o.coins, o.gross, o.tax, o.slot, o.filled, o.id);
     }
     checkpoint(owner: string, save: Uint8Array, enroll = false) {
-        if (enroll) this.db.query('INSERT INTO accounts VALUES(?,?) ON CONFLICT(owner) DO UPDATE SET save=excluded.save').run(owner, save);
-        else this.db.query('UPDATE accounts SET save=? WHERE owner=?').run(save, owner);
+        // Repeated checkpoints in one tick often contain identical bytes. Compare in
+        // SQLite (not a JS cache) so rollback and nested GE transactions remain safe.
+        if (enroll) this.db.query('INSERT INTO accounts VALUES(?,?) ON CONFLICT(owner) DO UPDATE SET save=excluded.save WHERE accounts.save != excluded.save').run(owner, save);
+        else this.db.query('UPDATE accounts SET save=? WHERE owner=? AND save != ?').run(save, owner, save);
     }
     saved(owner: string): Uint8Array | undefined {
         return this.db.query<{ save: Uint8Array }, [string]>('SELECT save FROM accounts WHERE owner=?').get(owner)?.save;

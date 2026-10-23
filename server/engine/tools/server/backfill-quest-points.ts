@@ -195,7 +195,7 @@ const candidates = await db
     .execute();
 
 const now = new Date();
-const rows: { account_id: number; profile: string; type: number; level: number; value: number; playtime: number }[] = [];
+const rows: { account_id: number; profile: string; type: number; level: number; value: number; playtime: number; playtime_ms: number }[] = [];
 const distribution = new Map<number, number>();
 let banned = 0;
 let noSave = 0;
@@ -217,7 +217,7 @@ for (const candidate of candidates) {
             noQuests++;
             continue;
         }
-        rows.push({ account_id: candidate.id, profile: PROFILE, type: QUEST_POINTS_HISCORE_TYPE, level: qp, value: qp, playtime: player.playtime });
+        rows.push({ account_id: candidate.id, profile: PROFILE, type: QUEST_POINTS_HISCORE_TYPE, level: qp, value: qp, playtime: player.playtime, playtime_ms: player.playtimeMs });
         distribution.set(qp, (distribution.get(qp) ?? 0) + 1);
     } catch (err) {
         failed++;

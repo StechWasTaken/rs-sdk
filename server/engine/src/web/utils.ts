@@ -1,7 +1,10 @@
 import path from 'path';
 import { isIP } from 'node:net';
+import { getTransportPeer } from './transportAuth.js';
 
 export function getIp(req: Request, behindFlyProxy = Boolean(process.env.FLY_APP_NAME)): string | null {
+    const transported = getTransportPeer(req);
+    if (transported) return transported;
     // Only Fly's ingress can vouch for this header. Outside Fly, callers fall
     // back to the socket peer; arbitrary forwarded headers are never trusted.
     if (!behindFlyProxy) return null;

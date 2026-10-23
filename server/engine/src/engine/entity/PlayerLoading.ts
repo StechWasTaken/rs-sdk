@@ -8,10 +8,11 @@ import World from '#/engine/World.js';
 import Packet from '#/io/Packet.js';
 import ClientSocket from '#/server/ClientSocket.js';
 import { fromBase37, toBase37 } from '#/util/JString.js';
+import { legacyPlaytimeMs, savedPlaytimeMs } from '#/util/Playtime.js';
 
 export class PlayerLoading {
     public static readonly SAV_MAGIC: number = 0x2004;
-    public static readonly SAV_VERSION: number = 9;
+    public static readonly SAV_VERSION: number = 10;
 
     static verify(sav: Packet) {
         if (sav.g2() !== PlayerLoading.SAV_MAGIC) {
@@ -184,6 +185,16 @@ export class PlayerLoading {
             for (let i = 0; i < 21; i++) {
                 player.levelPlaytime[i] = sav.g4s();
             }
+        }
+
+        if (version >= 10) {
+            player.playtimeMs = savedPlaytimeMs(sav.g8());
+            for (let i = 0; i < 21; i++) player.levelPlaytimeMs[i] = savedPlaytimeMs(sav.g8());
+        } else {
+            // Lazy migration includes offline players and atomic market saves.
+            // Saving as v10 prevents applying the conversion a second time.
+            player.playtimeMs = legacyPlaytimeMs(player.playtime);
+            for (let i = 0; i < 21; i++) player.levelPlaytimeMs[i] = legacyPlaytimeMs(player.levelPlaytime[i]);
         }
 
         player.combatLevel = player.getCombatLevel();

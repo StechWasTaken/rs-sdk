@@ -74,6 +74,7 @@ import {
     classifyQuantity,
     countItems,
     exactNamePattern,
+    matchesPlayerName,
     nextShopStep,
     resolveInterfaceOption,
     resolveSkillDialogProduct,
@@ -2219,8 +2220,7 @@ export class BotActions {
         const matchesTarget = (name: string | null | undefined): boolean => {
             if (!name) return false;
             if (typeof target === 'object' && 'index' in target) return exactNamePattern(target.name).test(name);
-            if (typeof target === 'string') return new RegExp(target, 'i').test(name);
-            return target.test(name);
+            return matchesPlayerName(typeof target === 'string' ? new RegExp(target, 'i') : target, name);
         };
 
         const open = this.sdk.getTradeState();
@@ -2515,8 +2515,7 @@ export class BotActions {
 
         const fromMatches = (name: string): boolean => {
             if (!from) return true;
-            if (typeof from === 'string') return name.toLowerCase().includes(from.toLowerCase());
-            return from.test(name);
+            return matchesPlayerName(from, name);
         };
 
         while (true) {

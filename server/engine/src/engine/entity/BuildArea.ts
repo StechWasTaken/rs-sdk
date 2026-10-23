@@ -13,6 +13,8 @@ export default class BuildArea {
     
     lastBuild: number = -1;
     private zoneKey = '';
+    // Membership or the client's map changed; consumed by updateZones().
+    zonesChanged = true;
 
     constructor(player: Player) {
         this.player = player;
@@ -23,6 +25,7 @@ export default class BuildArea {
 
     clear(reconnecting: boolean): void {
         if (!reconnecting) {
+            this.zonesChanged = true;
             this.zoneKey = '';
             this.activeZones.clear();
             this.loadedZones.clear();
@@ -39,6 +42,7 @@ export default class BuildArea {
         const key = `${centerX}:${centerZ}:${originX}:${originZ}:${this.player.level}`;
         if (key === this.zoneKey) return;
         this.zoneKey = key;
+        this.zonesChanged = true;
         this.activeZones.clear();
 
         const leftX = originX - 6;
@@ -91,6 +95,7 @@ export default class BuildArea {
             this.player.originX = this.player.x;
             this.player.originZ = this.player.z;
             this.loadedZones.clear();
+            this.zonesChanged = true;
             this.lastBuild = World.currentTick; // DO NOT DELETE THIS NO MATTER WHAT ??
         }
     }

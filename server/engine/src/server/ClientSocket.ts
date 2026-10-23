@@ -48,10 +48,13 @@ export default abstract class ClientSocket {
 
         // copy data to dest
         dest.set(this.in.data.subarray(0, length), offset);
+        // Move only queued bytes, not the unused tail of the 64 KiB buffer.
+        // copyWithin handles overlap without allocating another typed-array view.
+        const queued = this.in.pos;
         this.in.pos -= length;
-
-        // shift buffer to the next read
-        this.in.data.set(this.in.data.subarray(length), 0);
+        if (this.in.pos > 0 && length > 0) {
+            this.in.data.copyWithin(0, length, queued);
+        }
 
         return true;
     }

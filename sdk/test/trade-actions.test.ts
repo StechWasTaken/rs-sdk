@@ -239,6 +239,18 @@ describe('bot.tradeWith failure modes', () => {
     });
 });
 
+describe('bot.tradeWith login names', () => {
+    test('adopts an open session when the target is the partner\'s login name', async () => {
+        const harness = createHarness([
+            { trade: { isOpen: true, screen: 'offer', partner: 'Acct 74e9ad' } },
+        ]);
+
+        const result = await harness.bot.tradeWith('acct_74e9ad', 600);
+        expect(result.success).toBe(true);
+        expect(harness.dispatched).toEqual([]);
+    });
+});
+
 describe('bot.serveTrades', () => {
     test('serves an incoming gift and stops on the until condition', async () => {
         const coins = (n: number) => item(0, 995, 'Coins', n);
@@ -267,6 +279,28 @@ describe('bot.serveTrades', () => {
             'sendAcceptTrade',
             'sendAcceptTrade',
         ]);
+    });
+
+    test('matches a from filter given as a login name', async () => {
+        const coins = (n: number) => item(0, 995, 'Coins', n);
+        const harness = createHarness([
+            { },
+            { trade: { isOpen: true, screen: 'offer', partner: 'Acct 74e9ad', theirOffer: [coins(5)] } },
+            { trade: { isOpen: true, screen: 'confirm', partner: 'Acct 74e9ad', theirOffer: [coins(5)] } },
+            { message: 'Accepted trade.', inventory: [{ slot: 0, id: 995, name: 'Coins', count: 5 }] },
+        ]);
+        harness.sdk.waitForTradeRequest = async () => 'Acct 74e9ad';
+        harness.sdk.findNearbyPlayer = (pattern: RegExp) => (pattern.test('Acct 74e9ad') ? partner : null);
+
+        let served = false;
+        const result = await harness.bot.serveTrades({
+            from: 'acct_74e9ad',
+            onTrade: r => { served = r.success; },
+            until: () => served,
+            timeout: 5_000,
+        });
+        expect(result.reason).toBe('until');
+        expect(result.trades).toHaveLength(1);
     });
 
     test('ignores requesters that fail the from filter', async () => {

@@ -15,7 +15,9 @@ test('ranking indexes preserve results and avoid scanning other skills and sorti
             INSERT INTO hiscore_large SELECT * FROM hiscore;`);
         const query = (table: string) => `SELECT account.username, h.level, h.playtime FROM ${table} h JOIN account ON account.id=h.account_id WHERE h.profile='main' AND h.type=1 AND account.staffmodlevel<=1 ORDER BY h.level DESC,h.playtime ASC`;
         const before = ['hiscore', 'hiscore_large'].map(table => db.query(query(table)).all());
-        db.exec(readFileSync(join(import.meta.dir, '../prisma/singleworld/migrations/20261011000000_hiscore_rank_indexes/migration.sql'), 'utf8'));
+        for (const migration of ['20261011000000_hiscore_rank_indexes', '20261022000000_hiscore_playtime_ms', '20261022010000_hiscore_normalized_rank']) {
+            db.exec(readFileSync(join(import.meta.dir, `../prisma/singleworld/migrations/${migration}/migration.sql`), 'utf8'));
+        }
         for (const [index, table] of ['hiscore', 'hiscore_large'].entries()) {
             expect(db.query(query(table)).all()).toEqual(before[index]);
             const plan = JSON.stringify(db.query('EXPLAIN QUERY PLAN ' + query(table)).all());
@@ -33,7 +35,7 @@ test('cached ranks remain correct across profiles, exclusions and cache refresh'
     try {
         const result = Bun.spawnSync([process.execPath, join(import.meta.dir, 'fixtures/ranked-hiscores.ts')], {
             cwd: dir,
-            env: { ...process.env, DB_BACKEND: 'sqlite', HISCORES_HIDDEN_NAMES: 'hidden', HISCORES_CACHE_MS: '60000' },
+            env: { ...process.env, DB_BACKEND: 'sqlite', HISCORES_HIDDEN_NAMES: 'hidden', HISCORES_CACHE_MS: '60000', NODE_TICKRATE: '400' },
         });
         if (result.exitCode !== 0) throw new Error(result.stdout.toString() + result.stderr.toString());
         expect(result.exitCode).toBe(0);
@@ -46,7 +48,10 @@ test('cached ranks remain correct across profiles, exclusions and cache refresh'
 test('ranking requests wait for a worker with delayed startup to install its handler', () => {
     const dir = mkdtempSync(join(tmpdir(), 'ranked-startup-'));
     try {
-        writeFileSync(join(dir, 'RankedHiscores.ts'), readFileSync(join(import.meta.dir, '../src/web/pages/RankedHiscores.ts')));
+        writeFileSync(join(dir, 'RankedHiscores.ts'), readFileSync(join(import.meta.dir, '../src/web/pages/RankedHiscores.ts'), 'utf8')
+            .replace('#/util/MemoryDiagnostics.js', './MemoryDiagnostics.ts'));
+        writeFileSync(join(dir, 'MemoryDiagnostics.ts'), readFileSync(join(import.meta.dir, '../src/util/MemoryDiagnostics.ts')));
+        writeFileSync(join(dir, 'NetworkPressure.ts'), readFileSync(join(import.meta.dir, '../src/util/NetworkPressure.ts')));
         writeFileSync(join(dir, 'RankedHiscoresWorker.ts'), `
             import { parentPort } from 'node:worker_threads';
             let listening = false;

@@ -1,6 +1,7 @@
 import net from 'net';
 
 import ClientSocket from '#/server/ClientSocket.js';
+import { networkPressure } from '#/util/NetworkPressure.js';
 
 export default class TcpClientSocket extends ClientSocket {
     socket: net.Socket;
@@ -10,10 +11,14 @@ export default class TcpClientSocket extends ClientSocket {
 
         this.socket = socket;
         this.remoteAddress = remoteAddress;
+        networkPressure.register(socket, 'game-tcp', () => socket.writableLength, () => this.terminate());
+        socket.on('close', () => networkPressure.remove(socket));
     }
 
     send(src: Uint8Array): void {
+        if (!networkPressure.beforeSend(this.socket)) return;
         this.socket.write(src);
+        networkPressure.afterSend(this.socket);
     }
 
     close(): void {
@@ -27,6 +32,7 @@ export default class TcpClientSocket extends ClientSocket {
 
     terminate(): void {
         this.state = -1;
+        networkPressure.remove(this.socket);
         this.socket.destroy();
     }
 }

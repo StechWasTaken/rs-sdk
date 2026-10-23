@@ -36,6 +36,7 @@ export type hiscore = {
     level: number;
     value: number;
     playtime: Generated<number>;
+    playtime_ms: Generated<number>;
     date: Generated<Timestamp>;
 };
 export type hiscore_large = {
@@ -45,6 +46,7 @@ export type hiscore_large = {
     level: number;
     value: number;
     playtime: Generated<number>;
+    playtime_ms: Generated<number>;
     date: Generated<Timestamp>;
 };
 export type ignorelist = {

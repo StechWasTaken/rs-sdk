@@ -1,6 +1,5 @@
 import type { ServerWebSocket } from 'bun';
 import World from '#/engine/World.js';
-import { WorldStat } from '#/engine/WorldStat.js';
 import OnDemand from '#/engine/OnDemand.js';
 import { LoggerEventType } from '#/server/logger/LoggerEventType.js';
 import NullClientSocket from '#/server/NullClientSocket.js';
@@ -8,14 +7,14 @@ import WSClientSocket from '#/server/ws/WSClientSocket.js';
 import Environment from '#/util/Environment.js';
 import { gatewayLabelQuery, getIp } from './utils.js';
 import { checkWorldFeedUpgrade, isWorldFeedPath, onWorldFeedClose, onWorldFeedMessage, onWorldFeedOpen } from './worldfeed.js';
+import { AgentRelay } from './AgentRelay.js';
+import { networkPressure } from '#/util/NetworkPressure.js';
 
 export type WebSocketData = {
     client: WSClientSocket,
     remoteAddress: string,
     isAgentProxy?: boolean,
-    agentWs?: WebSocket,
-    agentReady?: boolean,
-    agentQueue?: string[],
+    agentRelay?: AgentRelay,
     agentLabel?: string,
     isWorldFeed?: boolean
 };
@@ -94,17 +93,13 @@ export function handleGatewayEndpointGet(url: URL): Response | null {
     return null;
 }
 
-// Relayed SDK frames are compressed on this (the tick) thread, ~7 ms CPU per MB.
-// When the last tick ran long, send them uncompressed: costs bandwidth, not ticks.
-function compressRelayFrame(): boolean {
-    return World.lastCycleStats[WorldStat.CYCLE] < World.tickRate * 0.75;
-}
-
 export const websocketHandlers = {
     // Negotiated for every socket (Bun can't opt out per upgrade), but only relay
     // frames are sent compressed; game packets go out as before. Clients that offer
     // the extension (browsers, Bun, Node ws) also compress what they publish.
     perMessageDeflate: true,
+    backpressureLimit: 2 * 1024 * 1024,
+    closeOnBackpressureLimit: true,
     open(ws: ServerWebSocket<WebSocketData>) {
         if (ws.data.isWorldFeed) {
             onWorldFeedOpen(ws);
@@ -113,40 +108,9 @@ export const websocketHandlers = {
 
         // Handle agent SDK proxy connections
         if (ws.data.isAgentProxy) {
-            const agentWs = new WebSocket(`ws://localhost:7780/${ws.data.agentLabel ?? ''}`);
-            ws.data.agentWs = agentWs;
-            ws.data.agentReady = false;
-            ws.data.agentQueue = [];
-
-            agentWs.onopen = () => {
-                ws.data.agentReady = true;
-                for (const msg of ws.data.agentQueue || []) {
-                    agentWs.send(msg);
-                }
-                ws.data.agentQueue = [];
-            };
-
-            agentWs.onmessage = (event) => {
-                try {
-                    ws.send(event.data, compressRelayFrame());
-                } catch (_) {
-                    agentWs.close();
-                }
-            };
-
-            agentWs.onclose = () => {
-                try {
-                    ws.close();
-                } catch (_) {}
-            };
-
-            agentWs.onerror = (err) => {
-                console.error('Agent SDK WebSocket error:', err);
-                try {
-                    ws.close();
-                } catch (_) {}
-            };
-
+            // Always compress negotiated relay sockets, including during busy ticks.
+            // Bun preserves uncompressed delivery for clients without the extension.
+            ws.data.agentRelay = new AgentRelay(ws, new WebSocket(`ws://localhost:7780/${ws.data.agentLabel ?? ''}`), () => true);
             return;
         }
 
@@ -162,12 +126,7 @@ export const websocketHandlers = {
         // Handle agent SDK proxy connections
         if (ws.data.isAgentProxy) {
             try {
-                const msgStr = message.toString();
-                if (ws.data.agentReady && ws.data.agentWs?.readyState === WebSocket.OPEN) {
-                    ws.data.agentWs.send(msgStr);
-                } else {
-                    ws.data.agentQueue?.push(msgStr);
-                }
+                ws.data.agentRelay?.message(message.toString());
             } catch (err) {
                 console.error('Agent SDK proxy message error:', err);
                 ws.close();
@@ -199,6 +158,7 @@ export const websocketHandlers = {
     },
 
     close(ws: ServerWebSocket<WebSocketData>) {
+        networkPressure.remove(ws);
         if (ws.data.isWorldFeed) {
             onWorldFeedClose(ws);
             return;
@@ -206,9 +166,8 @@ export const websocketHandlers = {
 
         // Handle agent SDK proxy connections
         if (ws.data.isAgentProxy) {
-            try {
-                ws.data.agentWs?.close();
-            } catch (_) {}
+            ws.data.agentRelay?.close();
+            ws.data.agentRelay = undefined;
             return;
         }
 

@@ -9,6 +9,7 @@ import Packet from '#/io/Packet.js';
 import { NpcInfoProt, PlayerInfoProt } from '#/network/rsbuf/prot.js';
 import { Visibility } from '#/network/rsbuf/visibility.js';
 import Environment from '#/util/Environment.js';
+import { networkPressure } from '#/util/NetworkPressure.js';
 import { printError, printInfo } from '#/util/Logger.js';
 import WordPack from '#/wordenc/WordPack.js';
 
@@ -119,6 +120,10 @@ export function checkWorldFeedUpgrade(url: URL): Response | undefined {
 }
 
 export function onWorldFeedOpen(ws: ServerWebSocket<WebSocketData>): void {
+    networkPressure.register(ws, 'world-feed', () => ws.getBufferedAmount(), () => {
+        onWorldFeedClose(ws);
+        ws.terminate();
+    });
     subscribers.set(ws, {
         ws,
         lastActivityAt: Date.now(),
@@ -178,6 +183,7 @@ export function onWorldFeedMessage(ws: ServerWebSocket<WebSocketData>, message: 
 
 export function onWorldFeedClose(ws: ServerWebSocket<WebSocketData>): void {
     subscribers.delete(ws);
+    networkPressure.remove(ws);
 }
 
 export function cycleWorldFeed(): void {
@@ -238,7 +244,7 @@ function expireIdleSubscribers(now: number): void {
     const idleTimeoutMs = Environment.WORLD_FEED_IDLE_TIMEOUT_MS;
     for (const [ws, sub] of subscribers) {
         if (now - sub.lastActivityAt >= idleTimeoutMs) {
-            subscribers.delete(ws);
+            onWorldFeedClose(ws);
             try {
                 ws.close(1001, 'World feed idle timeout');
             } catch {
@@ -606,10 +612,12 @@ function toInt(value: unknown): number {
 // (1006) a permessage-deflate socket that mixes compressed and uncompressed messages,
 // so the choice can't follow tick time the way the gateway relay's does.
 function send(ws: ServerWebSocket<WebSocketData>, msg: FeedRecord | string): void {
+    if (!networkPressure.beforeSend(ws)) return;
     try {
-        ws.send(typeof msg === 'string' ? msg : JSON.stringify(msg), true);
+        networkPressure.afterSend(ws, ws.send(typeof msg === 'string' ? msg : JSON.stringify(msg), true));
     } catch {
-        subscribers.delete(ws);
+        onWorldFeedClose(ws);
+        ws.terminate();
     }
 }
 

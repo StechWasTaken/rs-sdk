@@ -35,7 +35,7 @@ import { ChatHistory } from './chat-history';
 import { executionContext, executionWait, throwIfExecutionAborted } from './execution-context';
 import { redactCredentials } from './redact';
 import * as pathfinding from './pathfinding';
-import { resolveInterfaceOption, shortestNameMatch, type InterfaceOptionSelector } from './action-quantity';
+import { matchesPlayerName, playerNameForms, resolveInterfaceOption, shortestNameMatch, type InterfaceOptionSelector } from './action-quantity';
 
 /**
  * Apply {@link FindOptions} to a find* winner. `shortestNameMatch` already
@@ -765,7 +765,7 @@ export class BotSDK {
 
     /**
      * Read recent chat from a specific sender (case-insensitive, substring match
-     * on name), newest last, from the accumulated history. Handy for "what did
+     * on display or login name), newest last, from the accumulated history. Handy for "what did
      * my partner say?" without regex-matching the sender field yourself.
      *
      * @param name Sender name (or substring) to match.
@@ -773,9 +773,8 @@ export class BotSDK {
      */
     getChatFrom(name: string, opts: { limit?: number } = {}): GameMessage[] {
         const { limit = 20 } = opts;
-        const needle = name.toLowerCase();
         const filtered = this.chatHistory.all().filter(m =>
-            m.sender !== '' && m.sender.toLowerCase().includes(needle)
+            m.sender !== '' && matchesPlayerName(name, m.sender)
         );
         return limit > 0 ? filtered.slice(-limit) : filtered;
     }
@@ -786,7 +785,8 @@ export class BotSDK {
      * The easy way to coordinate two bots: `sdk.say('ready'); const reply =
      * await sdk.waitForChat({ from: 'partner', timeout: 60000 });`
      *
-     * @param opts.from Only accept this sender (case-insensitive substring).
+     * @param opts.from Only accept this sender (case-insensitive substring of
+     *   the display or login name).
      * @param opts.matching Only accept messages whose text matches this pattern.
      * @param opts.types Chat type codes to accept (default player chat: 1/2/3/6/7).
      * @param opts.includeSelf Accept your own messages (default false).
@@ -802,12 +802,11 @@ export class BotSDK {
     } = {}): Promise<GameMessage | null> {
         const { from, matching, types = PLAYER_CHAT_TYPES, includeSelf = false, timeout = 30000 } = opts;
         const typeSet = new Set(types);
-        const needle = from?.toLowerCase();
         const pattern = typeof matching === 'string' ? new RegExp(matching, 'i') : matching;
         const accepts = (m: GameMessage) =>
             typeSet.has(m.type) &&
             (includeSelf || !m.fromSelf) &&
-            (!needle || m.sender.toLowerCase().includes(needle)) &&
+            (!from || matchesPlayerName(from, m.sender)) &&
             (!pattern || pattern.test(m.text));
 
         // Private cursor starting "now" — does not consume getNewChat's cursor.
@@ -948,7 +947,7 @@ export class BotSDK {
     /** Find a nearby player by name pattern (shortest matching name wins, then nearest; reachable preferred). */
     findNearbyPlayer(pattern: string | RegExp, options?: FindOptions): NearbyPlayer | null {
         if (!this.state) return null;
-        return applyFindOptions(shortestNameMatch(this.state.nearbyPlayers, pattern), options);
+        return applyFindOptions(shortestNameMatch(this.state.nearbyPlayers, pattern, playerNameForms), options);
     }
 
     /** Get all nearby players, nearest first. */

@@ -180,7 +180,7 @@
 | `getStateAge(): number` | Get age of current state in milliseconds |
 | `getChat(opts: { limit?: number; types?: readonly number[]; includeSelf?: boolean } = {}): GameMessage[]` | Read recent chat messages. Returns player chat (public + PMs) by default, newest last. Reads from the SDK's accumulated history — up to 500 messages retained since connect — so old lines survive both system spam (level-ups, combat) and the client's own 100-deep ring eviction. |
 | `getNewChat(opts: { types?: readonly number[]; includeSelf?: boolean } = {}): GameMessage[]` | Read only chat messages that have arrived since the last call (cursor-based, newest last). Repeat polls never re-show the same message — no need to hand-roll a baseline. The first call returns everything seen since connect. Excludes your own messages by default. |
-| `getChatFrom(name: string, opts: { limit?: number } = {}): GameMessage[]` | Read recent chat from a specific sender (case-insensitive, substring match on name), newest last, from the accumulated history. Handy for "what did my partner say?" without regex-matching the sender field yourself. |
+| `getChatFrom(name: string, opts: { limit?: number } = {}): GameMessage[]` | Read recent chat from a specific sender (case-insensitive, substring match on display or login name), newest last, from the accumulated history. Handy for "what did my partner say?" without regex-matching the sender field yourself. |
 | `getSkill(name: string): SkillState \| null` | Get a skill by name (case-insensitive; "hp"/"hitpoint" alias Hitpoints). |
 | `getSkillXp(name: string): number \| null` | Get XP for a skill by name. |
 | `getSkills(): SkillState[]` | Get all skills. |

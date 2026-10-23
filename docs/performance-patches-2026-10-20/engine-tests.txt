@@ -1,0 +1,82 @@
+bun test v1.3.14 (0d9b296a)
+
+server/engine/test/market.test.ts:
+(pass) Grand Exchange conservation and matching > unmatched offers escrow real assets and never invent a counterparty [3.58ms]
+(pass) Grand Exchange conservation and matching > resting sell price, buyer refund, tax and partial collection [1.37ms]
+(pass) Grand Exchange conservation and matching > incoming sell receives higher resting bid [0.97ms]
+(pass) Grand Exchange conservation and matching > best price then FIFO, across multiple offers; self-match excluded [0.53ms]
+(pass) Grand Exchange conservation and matching > partial cancel refunds only unfilled escrow and preserves completed assets [0.37ms]
+(pass) Grand Exchange conservation and matching > cancel sell returns unsold items; full backpack retains collection [0.29ms]
+(pass) Grand Exchange conservation and matching > six occupied slots include uncollected completed and cancelled offers [0.53ms]
+(pass) Grand Exchange conservation and matching > foreign owners cannot cancel or collect [0.39ms]
+(pass) Grand Exchange conservation and matching > empty and capacity-blocked collections never serialize the world [0.88ms]
+(pass) Grand Exchange conservation and matching > batch collection validates every owner and rolls all offers back on save failure [1.01ms]
+(pass) Grand Exchange conservation and matching > invalid totals and insufficient assets do not change ledger or inventory [0.40ms]
+(pass) Grand Exchange conservation and matching > partial fills round tax cumulatively: twenty 1 gp trades burn 1 gp [1.42ms]
+(pass) Grand Exchange conservation and matching > serialization failure rolls back matching, tax, escrow and snapshots [0.36ms]
+(pass) Grand Exchange conservation and matching > failed collection serialization restores claims and inventory [0.28ms]
+(pass) Grand Exchange conservation and matching > restart restores market and matching player checkpoint, then latest normal save [8.04ms]
+(pass) Grand Exchange conservation and matching > history aggregates only real fills with quantity-weighted prices [0.48ms]
+(pass) Grand Exchange conservation and matching > SQLite write failure rolls back real escrow and all matching effects [0.45ms]
+(pass) Grand Exchange conservation and matching > mixed matching and cancellation conserves all assets over many offers [10.37ms]
+(pass) Market overview metrics > sell recency and value track remaining open offers through fills and cancellation [1.14ms]
+(pass) Market overview metrics > buy value sums unfilled commitments at each bid price and drops after fills and cancellations [0.83ms]
+(pass) Market overview metrics > period boundaries, weighted totals, price changes and listed supply use real ledger values [1.03ms]
+(pass) Market overview metrics > newly traded and untraded items do not fabricate comparison prices or market cap [0.62ms]
+
+server/engine/test/file-stream.test.ts:
+(pass) a changed map is immediately readable by the same pack pass and after reopening [4.75ms]
+
+server/engine/test/get-ip.test.ts:
+(pass) getIp > uses Fly-Client-IP behind Fly [1.28ms]
+(pass) getIp > ignores client-supplied forwarding headers [0.07ms]
+(pass) getIp > rejects a malformed header [0.03ms]
+(pass) getIp > outside Fly, defers to the socket peer [0.02ms]
+
+server/engine/test/worldfeed.test.ts:
+(pass) world feed streams players to subscribers [318.15ms]
+
+server/engine/test/hiscores-performance.test.ts:
+(pass) ranking indexes preserve results and avoid scanning other skills and sorting [1.09ms]
+(pass) cached ranks remain correct across profiles, exclusions and cache refresh [190.76ms]
+(pass) ranking requests wait for a worker with delayed startup to install its handler [137.94ms]
+
+server/engine/test/ws-sync.test.ts:
+(pass) login reply callbacks are released after timeout, response, and failed send [12.45ms]
+
+server/engine/test/level-playtime.test.ts:
+(pass) hiscores record the tick a level was reached, not the logout tick [290.06ms]
+
+server/engine/test/miscellania-coffers.test.ts:
+(pass) compiled Miscellania money handlers conserve coins across dialog inputs [609.97ms]
+
+server/engine/test/live-moderation.test.ts:
+(pass) live moderation preserves staff authorization in either production mode [188.25ms]
+
+server/engine/test/market-web.test.ts:
+(pass) HTTP rankings, search, pagination and item details use the same period metrics [201.85ms]
+
+server/engine/test/item-search.test.ts:
+(pass) ranks exact, phrase and fuzzy matches with deterministic ties [0.56ms]
+(pass) expands common equipment, material and food aliases [2.01ms]
+(pass) sorts matching results by name in both directions and preserves supplied item eligibility [0.24ms]
+
+server/engine/test/reconnect.test.ts:
+(pass) reconnect transfers ownership and stale socket closes cannot detach the replacement [245.63ms]
+
+server/engine/test/network-buffers.test.ts:
+(pass) packet copies preserve full views, slices, offsets and overlapping sources [0.34ms]
+(pass) reads preserve packet order across fragmented input and append after partial reads [0.19ms]
+(pass) random fragmented reads match a byte queue up to receive capacity [145.55ms]
+
+server/engine/test/bank-hiscores.test.ts:
+(pass) bank snapshots clear withdrawn items and empty banks without rewriting unchanged rows [211.50ms]
+(pass) matches literal substrings ignoring case and sums full stack values once [0.34ms]
+(pass) searches beyond the overall top 50 and sums every matching item before limiting results [0.45ms]
+(pass) skips damaged banks and invalid entries while retaining zero-value matching items [0.05ms]
+(pass) bank search HTTP page uses eligible banks, preserves profiles, and escapes searches [82.58ms]
+
+ 48 pass
+ 0 fail
+ 3865 expect() calls
+Ran 48 tests across 14 files. [3.01s]

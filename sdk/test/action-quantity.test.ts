@@ -3,7 +3,9 @@ import {
     classifyQuantity,
     countItems,
     exactNamePattern,
+    matchesPlayerName,
     nextShopStep,
+    playerNameForms,
     resolveInterfaceOption,
     resolveSkillDialogProduct,
     shortestNameMatch,
@@ -169,6 +171,30 @@ describe('shortestNameMatch', () => {
         // A string that is a working regex keeps regex semantics.
         expect(shortestNameMatch(items, '^cake')).toBe(items[1]!);
         expect(shortestNameMatch(items, 'Serum 207 (9)')).toBeNull();
+    });
+
+    test('player names match by login form as well as display form', () => {
+        const players = [{ name: 'Miner 9f2c' }, { name: 'Acct 74e9ad' }];
+        expect(shortestNameMatch(players, 'acct_74e9ad', playerNameForms)).toBe(players[1]!);
+        expect(shortestNameMatch(players, /^acct_74e9ad$/, playerNameForms)).toBe(players[1]!);
+        expect(shortestNameMatch(players, 'Acct 74e9ad', playerNameForms)).toBe(players[1]!);
+        expect(shortestNameMatch(players, /^miner_/, playerNameForms)).toBe(players[0]!);
+        // Items keep plain display-name matching.
+        expect(shortestNameMatch(players, 'acct_74e9ad')).toBeNull();
+    });
+});
+
+describe('playerNameForms', () => {
+    test('adds the login form of a displayed name', () => {
+        expect(playerNameForms('Acct 74e9ad')).toEqual(['Acct 74e9ad', 'acct_74e9ad']);
+        expect(playerNameForms('mulebot')).toEqual(['mulebot']);
+    });
+
+    test('matchesPlayerName accepts either spelling', () => {
+        expect(matchesPlayerName('acct_74e9ad', 'Acct 74e9ad')).toBe(true);
+        expect(matchesPlayerName('ACCT 74', 'Acct 74e9ad')).toBe(true);
+        expect(matchesPlayerName(/^acct_/, 'Acct 74e9ad')).toBe(true);
+        expect(matchesPlayerName('acct_ffff', 'Acct 74e9ad')).toBe(false);
     });
 });
 

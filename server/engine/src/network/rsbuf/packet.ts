@@ -41,7 +41,8 @@ export class Packet {
     }
 
     pdata(src: Uint8Array, offset: number, length: number): void {
-        this.data.set(src.subarray(offset, offset + length), this.pos);
+        // Cached player/NPC masks already have exactly the requested length.
+        this.data.set(offset === 0 && length === src.length ? src : src.subarray(offset, offset + length), this.pos);
         this.pos += length;
     }
 

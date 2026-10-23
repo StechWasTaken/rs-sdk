@@ -1,0 +1,56 @@
+diff --git a/server/engine/src/engine/entity/Player.ts b/server/engine/src/engine/entity/Player.ts
+index d087fa34a..f59d42b7c 100644
+--- a/server/engine/src/engine/entity/Player.ts
++++ b/server/engine/src/engine/entity/Player.ts
+@@ -308,7 +308,10 @@ export default class Player extends PathingEntity {
+         }
+ 
+         sav.p4(Packet.getcrc(sav.data, 0, sav.pos));
+-        const bytes = sav.data.subarray(0, sav.pos);
++        // Snapshots outlive this call (SQLite, worker messages, pending logouts).
++        // Give them owned bytes so the 30 KiB serialization packet can be reused.
++        const bytes = sav.data.slice(0, sav.pos);
++        sav.release();
+         if (checkpoint && playerSaveStore()) World.checkpointPlayers(this, bytes);
+         return bytes;
+     }
+diff --git a/server/engine/test/fixtures/reconnect-lifecycle.ts b/server/engine/test/fixtures/reconnect-lifecycle.ts
+index 43a8311c8..07bca207e 100644
+--- a/server/engine/test/fixtures/reconnect-lifecycle.ts
++++ b/server/engine/test/fixtures/reconnect-lifecycle.ts
+@@ -2,6 +2,7 @@
+ import { afterEach, expect, mock, spyOn, test } from 'bun:test';
+ import { EventEmitter } from 'node:events';
+ import type ClientSocket from '../../src/server/ClientSocket.js';
++import Packet from '../../src/io/Packet.js';
+ 
+ class TestWorker extends EventEmitter {
+     messages: unknown[] = [];
+@@ -38,6 +39,27 @@ function player(client: ClientSocket) {
+     return { p, logs };
+ }
+ 
++test('saved snapshots own their bytes after serialization packet reuse', () => {
++    const { p } = player(new NullClientSocket());
++    p.x = 3200; p.z = 3201;
++    const first = p.save(false);
++    const expected = first.slice();
++    expect(first.buffer.byteLength).toBe(first.byteLength);
++    expect(PlayerLoading.verify(new Packet(first))).toBe(true);
++    // Reuse and overwrite the released serialization packet before reading the save.
++    const reused = Packet.alloc(2);
++    reused.data.fill(255);
++    reused.release();
++    p.x = 3300;
++    const second = p.save(false);
++    expect(first).toEqual(expected);
++    expect(first).not.toEqual(second);
++    expect(PlayerLoading.verify(new Packet(first))).toBe(true);
++    const restored = PlayerLoading.load(p.username, new Packet(first), null);
++    expect(restored.x).toBe(3200);
++    expect(restored.z).toBe(3201);
++});
++
+ function queuedReconnects(count: number, onSave = () => {}) {
+     const entries = [];
+     for (let index = 0; index < count; index++) {

@@ -296,10 +296,24 @@ export class NetworkPlayer extends Player {
         const loadedZones: Set<number> = this.buildArea.loadedZones;
         const activeZones: Set<number> = this.buildArea.activeZones;
 
-        // unload any zones that are no longer active
-        for (const zoneIndex of loadedZones) {
-            if (!activeZones.has(zoneIndex)) {
-                loadedZones.delete(zoneIndex);
+        // With stable membership, all active zones are loaded. Visit the smaller
+        // change set directly; most players have no zone updates on a given tick.
+        // Fall back to the active-zone scan when the global change set is larger.
+        if (!this.buildArea.zonesChanged && loadedZones.size === activeZones.size && World.zonesTracking.size < activeZones.size) {
+            for (const zone of World.zonesTracking) {
+                if (!activeZones.has(zone.index)) continue;
+                zone.writePartialEncloses(this);
+                zone.writePartialFollows(this);
+            }
+            return;
+        }
+
+        // Membership only changes on a rebuild; busy ticks need not rescan it.
+        if (this.buildArea.zonesChanged || loadedZones.size !== activeZones.size) {
+            for (const zoneIndex of loadedZones) {
+                if (!activeZones.has(zoneIndex)) {
+                    loadedZones.delete(zoneIndex);
+                }
             }
         }
 
@@ -315,6 +329,7 @@ export class NetworkPlayer extends Player {
             zone.writePartialFollows(this);
             loadedZones.add(zone.index);
         }
+        this.buildArea.zonesChanged = false;
     }
 
     updateStats() {

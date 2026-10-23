@@ -1,0 +1,14 @@
+bun test v1.3.14 (0d9b296a)
+
+server/engine/test/worldfeed.test.ts:
+(pass) world feed streams players to subscribers [295.05ms]
+
+server/engine/test/network-buffers.test.ts:
+(pass) packet copies preserve full views, slices, offsets and overlapping sources [0.31ms]
+(pass) reads preserve packet order across fragmented input and append after partial reads [0.19ms]
+(pass) random fragmented reads match a byte queue up to receive capacity [176.35ms]
+
+ 4 pass
+ 0 fail
+ 3641 expect() calls
+Ran 4 tests across 2 files. [672.00ms]

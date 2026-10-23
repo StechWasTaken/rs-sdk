@@ -1,0 +1,111 @@
+// Compare with an unmodified source snapshot using PERF_ENGINE_ROOT=/absolute/engine.
+// Runs in a temporary cwd with worker stubs: no game service or live save is touched.
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { EventEmitter } from 'node:events';
+
+const engineRoot = resolve(process.env.PERF_ENGINE_ROOT ?? join(import.meta.dir, '../..'));
+if (!process.env.PERF_BENCH_CHILD) {
+    const dir = mkdtempSync(join(tmpdir(), 'network-hotpaths-'));
+    try {
+        mkdirSync(join(dir, 'data/config'), { recursive: true });
+        copyFileSync(join(import.meta.dir, '../../data/config/private.pem'), join(dir, 'data/config/private.pem'));
+        const child = Bun.spawnSync([process.execPath, import.meta.path], {
+            cwd: dir,
+            env: { ...process.env, PERF_ENGINE_ROOT: engineRoot, PERF_BENCH_CHILD: '1', GE_DATABASE: join(dir, 'market.sqlite') },
+            stdout: 'inherit',
+            stderr: 'inherit'
+        });
+        process.exitCode = child.exitCode;
+    } finally {
+        rmSync(dir, { recursive: true, force: true });
+    }
+} else {
+    const { mock } = await import('bun:test');
+    class TestWorker extends EventEmitter { postMessage() {} }
+    mock.module('worker_threads', () => ({ Worker: TestWorker }));
+    const load = (path: string) => import(pathToFileURL(join(engineRoot, 'src', path)).href);
+    const { Packet } = await load('network/rsbuf/packet.ts');
+    const { default: ClientSocket } = await load('server/ClientSocket.ts');
+    const { default: World } = await load('engine/World.ts');
+    const { NetworkPlayer } = await load('engine/entity/NetworkPlayer.ts');
+    const { default: NullClientSocket } = await load('server/NullClientSocket.ts');
+    class TestSocket extends ClientSocket { send() {} close() {} terminate() {} }
+    let checksum = 0;
+    const results: Record<string, unknown> = {};
+    function bench(name: string, operations: number, fn: () => void) {
+        fn(); fn(); // warmup
+        const samplesMs: number[] = [];
+        for (let i = 0; i < 7; i++) {
+            Bun.gc(true);
+            const start = performance.now();
+            fn();
+            samplesMs.push(performance.now() - start);
+        }
+        const sorted = [...samplesMs].sort((a, b) => a - b);
+        results[name] = { operations, medianMs: sorted[3], samplesMs };
+    }
+
+    const packet = new Packet(5000);
+    for (const length of [8, 64, 256]) {
+        const source = new Uint8Array(length).fill(31);
+        bench(`packet-full-${length}`, 1_000_000, () => {
+            for (let i = 0; i < 1_000_000; i++) {
+                packet.pos = i & 15;
+                packet.pdata(source, 0, source.length);
+                checksum += packet.data[packet.pos - 1];
+            }
+        });
+    }
+    const source = new Uint8Array(5000).fill(19);
+    bench('packet-partial-64', 1_000_000, () => {
+        for (let i = 0; i < 1_000_000; i++) {
+            packet.pos = 0;
+            packet.pdata(source, 7, 64);
+            checksum += packet.data[0];
+        }
+    });
+    const socket = new TestSocket();
+    const dest = new Uint8Array(1024);
+    for (const queued of [1, 64, 1024, 65535]) {
+        bench(`receive-${queued}-read-1`, 100_000, () => {
+            socket.in.data.fill(13);
+            for (let i = 0; i < 100_000; i++) {
+                socket.in.pos = queued;
+                socket.read(dest, 0, 1);
+                checksum += dest[0];
+            }
+        });
+    }
+    const player = new NetworkPlayer('perf', 1n, 1n, new NullClientSocket());
+    player.x = player.originX = 3240;
+    player.z = player.originZ = 3240;
+    player.write = () => { checksum++; };
+    player.buildArea.rebuildZones();
+    player.updateZones();
+    for (const changed of [0, 1, 20, 100]) {
+        World.zonesTracking.clear();
+        for (let i = 0; i < changed; i++) World.trackZone(World.gameMap.getZone(3240 + i * 8, 3240, 0));
+        bench(`stable-zones-${changed}-changed`, 100_000, () => {
+            for (let i = 0; i < 100_000; i++) player.updateZones();
+        });
+    }
+    // Actual serializer, minimal character. Measures allocation/CRC, not a populated bank.
+    let retained: Uint8Array[] = [];
+    bench('save-2000-minimal-players', 2000, () => {
+        retained = [];
+        for (let i = 0; i < 2000; i++) {
+            player.x = 3200 + (i & 31);
+            const bytes = player.save(false);
+            retained.push(bytes);
+            checksum += bytes[4];
+        }
+    });
+    results.retainedSaveBackingBytes = retained.reduce((n, bytes) => n + bytes.buffer.byteLength, 0);
+    results.saveBytes = retained[0].length;
+    console.log(JSON.stringify({ bun: Bun.version, platform: process.platform, arch: process.arch, engineRoot, checksum, results }, null, 2));
+    // Imported engine modules install housekeeping timers even with stub workers.
+    process.exit(0);
+}

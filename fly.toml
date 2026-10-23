@@ -7,6 +7,7 @@ dockerfile = "server/Dockerfile"
 ignorefile = "server/.dockerignore"
 
 [env]
+MEMORY_DIAGNOSTICS_DIR = "/opt/server/data/memory"
 # SDK bug reports land on the mounted volume so they survive deploys/restarts.
 BUG_REPORTS_FILE = "/opt/server/data/bug-reports.jsonl"
 # Grand Exchange escrow and authoritative player checkpoints survive redeploys.
@@ -23,7 +24,7 @@ LOGIN_SERVER = "true"
 NODE_MEMBERS = "true"
 NODE_PORT = "43594"
 NODE_RANDOM_EVENTS = "false"
-NODE_TICKRATE = "300"
+NODE_TICKRATE = "400"
 NODE_XPRATE = "25"
 WEBSITE_REGISTRATION = "false"
 WEB_PORT = "8080"
@@ -34,7 +35,7 @@ WORLD_FEED_IDLE_TIMEOUT_MS = "120000"
 GATEWAY_PUBLIC_PORT = "7781"
 # Concurrent game sessions per source IP (code default 200). Keyed on
 # Fly-Client-IP, which clients can't spoof.
-MAX_PLAYERS_PER_IP = "100"
+MAX_PLAYERS_PER_IP = "50"
 
 [http_service]
 auto_start_machines = true

@@ -10,6 +10,7 @@
 //   /sprite/player/{w}x{h}/{gender}/{c0.c1.c2.c3.c4}/{s0.s1.….s11}.png
 //   /sprite/item/{itemId}.png            /sprite/item/{itemId}-{count}.png
 import { Worker } from 'worker_threads';
+import { registerMemoryWorker } from '#/util/MemoryDiagnostics.js';
 
 import type { PlayerAppearance, SpriteJob, SpriteRequest, SpriteResponse } from '#/web/sprites/SpriteProtocol.js';
 
@@ -50,6 +51,7 @@ function getWorker(): Worker | null {
     if (restarting) return null;
 
     const w = new Worker(new URL('./SpriteWorker.ts', import.meta.url));
+    registerMemoryWorker(w, 'sprites');
     worker = w;
     w.on('message', (res: SpriteResponse) => {
         if (res.error) {

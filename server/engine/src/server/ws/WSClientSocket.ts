@@ -1,9 +1,11 @@
 import ClientSocket from '#/server/ClientSocket.js';
+import { networkPressure } from '#/util/NetworkPressure.js';
 
 type RuntimeWebSocket = {
     send(data: Uint8Array): number | void;
     close(): void;
     terminate(): void;
+    getBufferedAmount?(): number;
 };
 
 // Rate-limited logging for dropped websocket sends (diagnosing silent outbound data loss)
@@ -34,6 +36,7 @@ export default class WSClientSocket extends ClientSocket {
     init(socket: RuntimeWebSocket, remoteAddress: string) {
         this.socket = socket;
         this.remoteAddress = remoteAddress;
+        networkPressure.register(socket, 'game-ws', () => socket.getBufferedAmount?.() ?? 0, () => this.terminate());
     }
 
     send(src: Uint8Array): void {
@@ -95,7 +98,9 @@ export default class WSClientSocket extends ClientSocket {
         // 0 = DROPPED (connection closed/closing), >0 = bytes sent. Dropped sends were
         // previously silent - clients would hang on "Connecting to server..." or
         // "Loading - please wait." with no server-side trace.
+        if (!networkPressure.beforeSend(this.socket)) return;
         const result = this.socket.send(src);
+        networkPressure.afterSend(this.socket, result);
         if (result === 0) {
             droppedSendCount++;
             const now = Date.now();
@@ -124,6 +129,7 @@ export default class WSClientSocket extends ClientSocket {
     discard(): void {
         this.pendingLen = 0;
         pendingFlush.delete(this);
+        if (this.socket) networkPressure.remove(this.socket);
     }
 
     terminate(): void {

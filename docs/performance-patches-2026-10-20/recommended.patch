@@ -1,0 +1,453 @@
+diff --git a/server/engine/src/network/rsbuf/packet.ts b/server/engine/src/network/rsbuf/packet.ts
+index 2717e524f..2a392d0c6 100644
+--- a/server/engine/src/network/rsbuf/packet.ts
++++ b/server/engine/src/network/rsbuf/packet.ts
+@@ -41,7 +41,8 @@ export class Packet {
+     }
+ 
+     pdata(src: Uint8Array, offset: number, length: number): void {
+-        this.data.set(src.subarray(offset, offset + length), this.pos);
++        // Cached player/NPC masks already have exactly the requested length.
++        this.data.set(offset === 0 && length === src.length ? src : src.subarray(offset, offset + length), this.pos);
+         this.pos += length;
+     }
+ 
+diff --git a/server/engine/src/server/ClientSocket.ts b/server/engine/src/server/ClientSocket.ts
+index d47ff3e9c..edee06da3 100644
+--- a/server/engine/src/server/ClientSocket.ts
++++ b/server/engine/src/server/ClientSocket.ts
+@@ -48,10 +48,13 @@ export default abstract class ClientSocket {
+ 
+         // copy data to dest
+         dest.set(this.in.data.subarray(0, length), offset);
++        // Move only queued bytes, not the unused tail of the 64 KiB buffer.
++        // copyWithin handles overlap without allocating another typed-array view.
++        const queued = this.in.pos;
+         this.in.pos -= length;
+-
+-        // shift buffer to the next read
+-        this.in.data.set(this.in.data.subarray(length), 0);
++        if (this.in.pos > 0 && length > 0) {
++            this.in.data.copyWithin(0, length, queued);
++        }
+ 
+         return true;
+     }
+diff --git a/server/engine/test/network-buffers.test.ts b/server/engine/test/network-buffers.test.ts
+new file mode 100644
+index 000000000..da16788f6
+--- /dev/null
++++ b/server/engine/test/network-buffers.test.ts
+@@ -0,0 +1,84 @@
++import { expect, test } from 'bun:test';
++import { Packet } from '../src/network/rsbuf/packet.js';
++import ClientSocket from '../src/server/ClientSocket.js';
++
++class TestSocket extends ClientSocket {
++    closed = false;
++    send() {}
++    close() { this.closed = true; }
++    terminate() {}
++}
++
++test('packet copies preserve full views, slices, offsets and overlapping sources', () => {
++    const backing = Uint8Array.from({ length: 32 }, (_, i) => i);
++    for (const source of [backing, backing.subarray(5, 13), Buffer.from(backing)]) {
++        for (const [offset, length] of [[0, source.length], [1, 3], [0, 0]]) {
++            const original = new Uint8Array(source);
++            const packet = new Packet(64);
++            packet.pos = 4;
++            packet.pdata(source, offset, length);
++            expect(packet.pos).toBe(4 + length);
++            expect(packet.data.slice(4, packet.pos)).toEqual(new Uint8Array(source.slice(offset, offset + length)));
++            // pdata must copy, not retain an alias to a renderer's cached bytes.
++            const saved = packet.data.slice();
++            source.fill(99);
++            expect(packet.data).toEqual(saved);
++            source.set(original);
++        }
++    }
++    const packet = new Packet(12);
++    packet.data.set([1, 2, 3, 4, 5, 6]);
++    packet.pos = 2;
++    packet.pdata(packet.data.subarray(0, 6), 0, 6);
++    expect([...packet.data.slice(0, 8)]).toEqual([1, 2, 1, 2, 3, 4, 5, 6]);
++});
++
++test('reads preserve packet order across fragmented input and append after partial reads', () => {
++    const socket = new TestSocket();
++    socket.buffer(Buffer.from([10, 11, 12]));
++    const dest = new Uint8Array(8).fill(255);
++    expect(socket.read(dest, 2, 2)).toBe(true);
++    expect([...dest]).toEqual([255, 255, 10, 11, 255, 255, 255, 255]);
++    expect(socket.available).toBe(1);
++    socket.buffer(Buffer.from([13, 14, 15]));
++    expect(socket.read(dest, 0, 5)).toBe(false);
++    expect(socket.available).toBe(4);
++    expect(socket.read(dest, 0, 0)).toBe(true);
++    expect(socket.read(dest, 0, 4)).toBe(true);
++    expect([...dest.slice(0, 4)]).toEqual([12, 13, 14, 15]);
++    expect(socket.available).toBe(0);
++    expect(socket.remaining).toBe(socket.in.length);
++    socket.buffer(Buffer.from([20]));
++    expect(socket.read(dest, 0, 1)).toBe(true);
++    expect(dest[0]).toBe(20);
++});
++
++test('random fragmented reads match a byte queue up to receive capacity', () => {
++    const socket = new TestSocket();
++    const queue: number[] = [];
++    let seed = 12345;
++    const random = (max: number) => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) % max);
++    // Exercise overlap with more queued bytes than consumed, plus a full buffer.
++    const full = Buffer.from(Uint8Array.from({ length: socket.remaining }, (_, i) => i & 255));
++    socket.buffer(full);
++    queue.push(...full);
++    for (let i = 0; i < 600; i++) {
++        const length = random(Math.min(queue.length + 2, 1000));
++        const dest = new Uint8Array(length + 4).fill(253);
++        const before = queue.length;
++        expect(socket.read(dest, 2, length)).toBe(length <= before);
++        if (length <= before) {
++            expect([...dest.slice(2, 2 + length)]).toEqual(queue.splice(0, length));
++        }
++        expect(dest[0]).toBe(253);
++        expect(dest.at(-1)).toBe(253);
++        const append = Buffer.from(Uint8Array.from({ length: Math.min(random(400), socket.remaining) }, () => random(256)));
++        socket.buffer(append);
++        queue.push(...append);
++        expect(socket.available).toBe(queue.length);
++        expect([...socket.in.data.slice(0, socket.available)]).toEqual(queue);
++    }
++    expect(socket.closed).toBe(false);
++    socket.buffer(Buffer.alloc(socket.remaining + 1));
++    expect(socket.closed).toBe(true);
++});
+diff --git a/server/engine/src/engine/entity/BuildArea.ts b/server/engine/src/engine/entity/BuildArea.ts
+index a817b97c2..bfd432841 100644
+--- a/server/engine/src/engine/entity/BuildArea.ts
++++ b/server/engine/src/engine/entity/BuildArea.ts
+@@ -13,6 +13,8 @@ export default class BuildArea {
+     
+     lastBuild: number = -1;
+     private zoneKey = '';
++    // Membership or the client's map changed; consumed by updateZones().
++    zonesChanged = true;
+ 
+     constructor(player: Player) {
+         this.player = player;
+@@ -23,6 +25,7 @@ export default class BuildArea {
+ 
+     clear(reconnecting: boolean): void {
+         if (!reconnecting) {
++            this.zonesChanged = true;
+             this.zoneKey = '';
+             this.activeZones.clear();
+             this.loadedZones.clear();
+@@ -39,6 +42,7 @@ export default class BuildArea {
+         const key = `${centerX}:${centerZ}:${originX}:${originZ}:${this.player.level}`;
+         if (key === this.zoneKey) return;
+         this.zoneKey = key;
++        this.zonesChanged = true;
+         this.activeZones.clear();
+ 
+         const leftX = originX - 6;
+@@ -91,6 +95,7 @@ export default class BuildArea {
+             this.player.originX = this.player.x;
+             this.player.originZ = this.player.z;
+             this.loadedZones.clear();
++            this.zonesChanged = true;
+             this.lastBuild = World.currentTick; // DO NOT DELETE THIS NO MATTER WHAT ??
+         }
+     }
+diff --git a/server/engine/src/engine/entity/NetworkPlayer.ts b/server/engine/src/engine/entity/NetworkPlayer.ts
+index 07f4adf32..c4b3935f5 100644
+--- a/server/engine/src/engine/entity/NetworkPlayer.ts
++++ b/server/engine/src/engine/entity/NetworkPlayer.ts
+@@ -296,10 +296,24 @@ export class NetworkPlayer extends Player {
+         const loadedZones: Set<number> = this.buildArea.loadedZones;
+         const activeZones: Set<number> = this.buildArea.activeZones;
+ 
+-        // unload any zones that are no longer active
+-        for (const zoneIndex of loadedZones) {
+-            if (!activeZones.has(zoneIndex)) {
+-                loadedZones.delete(zoneIndex);
++        // With stable membership, all active zones are loaded. Visit the smaller
++        // change set directly; most players have no zone updates on a given tick.
++        // Fall back to the active-zone scan when the global change set is larger.
++        if (!this.buildArea.zonesChanged && loadedZones.size === activeZones.size && World.zonesTracking.size < activeZones.size) {
++            for (const zone of World.zonesTracking) {
++                if (!activeZones.has(zone.index)) continue;
++                zone.writePartialEncloses(this);
++                zone.writePartialFollows(this);
++            }
++            return;
++        }
++
++        // Membership only changes on a rebuild; busy ticks need not rescan it.
++        if (this.buildArea.zonesChanged || loadedZones.size !== activeZones.size) {
++            for (const zoneIndex of loadedZones) {
++                if (!activeZones.has(zoneIndex)) {
++                    loadedZones.delete(zoneIndex);
++                }
+             }
+         }
+ 
+@@ -315,6 +329,7 @@ export class NetworkPlayer extends Player {
+             zone.writePartialFollows(this);
+             loadedZones.add(zone.index);
+         }
++        this.buildArea.zonesChanged = false;
+     }
+ 
+     updateStats() {
+diff --git a/server/engine/test/fixtures/worldfeed.ts b/server/engine/test/fixtures/worldfeed.ts
+index e749717aa..0f462bf54 100644
+--- a/server/engine/test/fixtures/worldfeed.ts
++++ b/server/engine/test/fixtures/worldfeed.ts
+@@ -186,3 +186,72 @@ test('loaded unchanged zones skip writes, new zones and private events retain de
+     player.buildArea.activeZones.clear(); player.updateZones();
+     expect(player.buildArea.loadedZones.size).toBe(0);
+ });
++
++test('stable areas visit only tracked zones, including private events, and fall back for busy ticks', () => {
++    const player = addPlayer(25, 3240, 3240);
++    player.originX = player.x; player.originZ = player.z;
++    player.buildArea.rebuildZones();
++    const written: any[] = [];
++    player.write = message => { written.push(message); };
++    player.updateZones();
++    expect(player.buildArea.zonesChanged).toBe(false);
++    expect(player.buildArea.loadedZones.size).toBe(49);
++    const zone = World.gameMap.getZone(player.x, player.z, 0);
++    const outside = World.gameMap.getZone(3400, 3400, 0);
++    const mine = { marker: 'fast-private' }, theirs = { marker: 'fast-other' }, publicEvent = { marker: 'public' };
++    (zone as any).events.add({ type: 1, receiver64: player.hash64, message: mine });
++    (zone as any).events.add({ type: 1, receiver64: 999n, message: theirs });
++    (zone as any).events.add({ type: 1, receiver64: -1n, message: publicEvent });
++    (zone as any).shared = Uint8Array.of(1, 2, 3);
++    World.trackZone(zone);
++    World.trackZone(outside);
++    written.length = 0;
++    player.updateZones();
++    const fast = [...written];
++    expect(fast).toContain(mine);
++    expect(fast).toContain(publicEvent);
++    expect(fast[0].constructor.name).toBe('UpdateZonePartialEnclosed');
++    expect(fast).not.toContain(theirs);
++    // The previous full scan is also the fallback when many zones change.
++    for (let i = 0; i < 60; i++) World.trackZone(World.gameMap.getZone(4000 + i * 8, 4000, 0));
++    written.length = 0;
++    player.updateZones();
++    expect(written).toEqual(fast);
++    for (const changed of World.zonesTracking) changed.reset();
++    World.zonesTracking.clear();
++    written.length = 0;
++    player.updateZones();
++    expect(written).toEqual([]);
++});
++
++test('zone movement, plane changes and reconnect rebuilds reload the required zones', () => {
++    const player = addPlayer(26, 3240, 3240);
++    player.originX = player.x; player.originZ = player.z;
++    player.write = () => {};
++    const area = player.buildArea;
++    area.rebuildZones();
++    player.updateZones();
++    const previous = new Set(area.loadedZones);
++    player.x += 8;
++    area.rebuildZones();
++    expect(area.zonesChanged).toBe(true);
++    player.updateZones();
++    expect(area.loadedZones).toEqual(area.activeZones);
++    expect([...previous].some(index => !area.loadedZones.has(index))).toBe(true);
++    player.level = 1;
++    area.rebuildZones();
++    player.updateZones();
++    expect(area.loadedZones).toEqual(area.activeZones);
++    expect([...area.loadedZones].every(index => index >>> 22 === 1)).toBe(true);
++    area.rebuildNormal(true);
++    expect(area.loadedZones.size).toBe(0);
++    expect(area.zonesChanged).toBe(true);
++    area.rebuildZones();
++    player.updateZones();
++    expect(area.loadedZones).toEqual(area.activeZones);
++    expect(area.zonesChanged).toBe(false);
++    area.clear(false);
++    area.rebuildZones();
++    player.updateZones();
++    expect(area.loadedZones.size).toBeGreaterThan(0);
++});
+diff --git a/server/engine/src/engine/entity/Player.ts b/server/engine/src/engine/entity/Player.ts
+index d087fa34a..f59d42b7c 100644
+--- a/server/engine/src/engine/entity/Player.ts
++++ b/server/engine/src/engine/entity/Player.ts
+@@ -308,7 +308,10 @@ export default class Player extends PathingEntity {
+         }
+ 
+         sav.p4(Packet.getcrc(sav.data, 0, sav.pos));
+-        const bytes = sav.data.subarray(0, sav.pos);
++        // Snapshots outlive this call (SQLite, worker messages, pending logouts).
++        // Give them owned bytes so the 30 KiB serialization packet can be reused.
++        const bytes = sav.data.slice(0, sav.pos);
++        sav.release();
+         if (checkpoint && playerSaveStore()) World.checkpointPlayers(this, bytes);
+         return bytes;
+     }
+diff --git a/server/engine/test/fixtures/reconnect-lifecycle.ts b/server/engine/test/fixtures/reconnect-lifecycle.ts
+index 43a8311c8..07bca207e 100644
+--- a/server/engine/test/fixtures/reconnect-lifecycle.ts
++++ b/server/engine/test/fixtures/reconnect-lifecycle.ts
+@@ -2,6 +2,7 @@
+ import { afterEach, expect, mock, spyOn, test } from 'bun:test';
+ import { EventEmitter } from 'node:events';
+ import type ClientSocket from '../../src/server/ClientSocket.js';
++import Packet from '../../src/io/Packet.js';
+ 
+ class TestWorker extends EventEmitter {
+     messages: unknown[] = [];
+@@ -38,6 +39,27 @@ function player(client: ClientSocket) {
+     return { p, logs };
+ }
+ 
++test('saved snapshots own their bytes after serialization packet reuse', () => {
++    const { p } = player(new NullClientSocket());
++    p.x = 3200; p.z = 3201;
++    const first = p.save(false);
++    const expected = first.slice();
++    expect(first.buffer.byteLength).toBe(first.byteLength);
++    expect(PlayerLoading.verify(new Packet(first))).toBe(true);
++    // Reuse and overwrite the released serialization packet before reading the save.
++    const reused = Packet.alloc(2);
++    reused.data.fill(255);
++    reused.release();
++    p.x = 3300;
++    const second = p.save(false);
++    expect(first).toEqual(expected);
++    expect(first).not.toEqual(second);
++    expect(PlayerLoading.verify(new Packet(first))).toBe(true);
++    const restored = PlayerLoading.load(p.username, new Packet(first), null);
++    expect(restored.x).toBe(3200);
++    expect(restored.z).toBe(3201);
++});
++
+ function queuedReconnects(count: number, onSave = () => {}) {
+     const entries = [];
+     for (let index = 0; index < count; index++) {
+diff --git a/server/engine/tools/bench/network-hotpaths.ts b/server/engine/tools/bench/network-hotpaths.ts
+new file mode 100644
+index 000000000..72012552d
+--- /dev/null
++++ b/server/engine/tools/bench/network-hotpaths.ts
+@@ -0,0 +1,111 @@
++// Compare with an unmodified source snapshot using PERF_ENGINE_ROOT=/absolute/engine.
++// Runs in a temporary cwd with worker stubs: no game service or live save is touched.
++import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
++import { tmpdir } from 'node:os';
++import { join, resolve } from 'node:path';
++import { pathToFileURL } from 'node:url';
++import { EventEmitter } from 'node:events';
++
++const engineRoot = resolve(process.env.PERF_ENGINE_ROOT ?? join(import.meta.dir, '../..'));
++if (!process.env.PERF_BENCH_CHILD) {
++    const dir = mkdtempSync(join(tmpdir(), 'network-hotpaths-'));
++    try {
++        mkdirSync(join(dir, 'data/config'), { recursive: true });
++        copyFileSync(join(import.meta.dir, '../../data/config/private.pem'), join(dir, 'data/config/private.pem'));
++        const child = Bun.spawnSync([process.execPath, import.meta.path], {
++            cwd: dir,
++            env: { ...process.env, PERF_ENGINE_ROOT: engineRoot, PERF_BENCH_CHILD: '1', GE_DATABASE: join(dir, 'market.sqlite') },
++            stdout: 'inherit',
++            stderr: 'inherit'
++        });
++        process.exitCode = child.exitCode;
++    } finally {
++        rmSync(dir, { recursive: true, force: true });
++    }
++} else {
++    const { mock } = await import('bun:test');
++    class TestWorker extends EventEmitter { postMessage() {} }
++    mock.module('worker_threads', () => ({ Worker: TestWorker }));
++    const load = (path: string) => import(pathToFileURL(join(engineRoot, 'src', path)).href);
++    const { Packet } = await load('network/rsbuf/packet.ts');
++    const { default: ClientSocket } = await load('server/ClientSocket.ts');
++    const { default: World } = await load('engine/World.ts');
++    const { NetworkPlayer } = await load('engine/entity/NetworkPlayer.ts');
++    const { default: NullClientSocket } = await load('server/NullClientSocket.ts');
++    class TestSocket extends ClientSocket { send() {} close() {} terminate() {} }
++    let checksum = 0;
++    const results: Record<string, unknown> = {};
++    function bench(name: string, operations: number, fn: () => void) {
++        fn(); fn(); // warmup
++        const samplesMs: number[] = [];
++        for (let i = 0; i < 7; i++) {
++            Bun.gc(true);
++            const start = performance.now();
++            fn();
++            samplesMs.push(performance.now() - start);
++        }
++        const sorted = [...samplesMs].sort((a, b) => a - b);
++        results[name] = { operations, medianMs: sorted[3], samplesMs };
++    }
++
++    const packet = new Packet(5000);
++    for (const length of [8, 64, 256]) {
++        const source = new Uint8Array(length).fill(31);
++        bench(`packet-full-${length}`, 1_000_000, () => {
++            for (let i = 0; i < 1_000_000; i++) {
++                packet.pos = i & 15;
++                packet.pdata(source, 0, source.length);
++                checksum += packet.data[packet.pos - 1];
++            }
++        });
++    }
++    const source = new Uint8Array(5000).fill(19);
++    bench('packet-partial-64', 1_000_000, () => {
++        for (let i = 0; i < 1_000_000; i++) {
++            packet.pos = 0;
++            packet.pdata(source, 7, 64);
++            checksum += packet.data[0];
++        }
++    });
++    const socket = new TestSocket();
++    const dest = new Uint8Array(1024);
++    for (const queued of [1, 64, 1024, 65535]) {
++        bench(`receive-${queued}-read-1`, 100_000, () => {
++            socket.in.data.fill(13);
++            for (let i = 0; i < 100_000; i++) {
++                socket.in.pos = queued;
++                socket.read(dest, 0, 1);
++                checksum += dest[0];
++            }
++        });
++    }
++    const player = new NetworkPlayer('perf', 1n, 1n, new NullClientSocket());
++    player.x = player.originX = 3240;
++    player.z = player.originZ = 3240;
++    player.write = () => { checksum++; };
++    player.buildArea.rebuildZones();
++    player.updateZones();
++    for (const changed of [0, 1, 20, 100]) {
++        World.zonesTracking.clear();
++        for (let i = 0; i < changed; i++) World.trackZone(World.gameMap.getZone(3240 + i * 8, 3240, 0));
++        bench(`stable-zones-${changed}-changed`, 100_000, () => {
++            for (let i = 0; i < 100_000; i++) player.updateZones();
++        });
++    }
++    // Actual serializer, minimal character. Measures allocation/CRC, not a populated bank.
++    let retained: Uint8Array[] = [];
++    bench('save-2000-minimal-players', 2000, () => {
++        retained = [];
++        for (let i = 0; i < 2000; i++) {
++            player.x = 3200 + (i & 31);
++            const bytes = player.save(false);
++            retained.push(bytes);
++            checksum += bytes[4];
++        }
++    });
++    results.retainedSaveBackingBytes = retained.reduce((n, bytes) => n + bytes.buffer.byteLength, 0);
++    results.saveBytes = retained[0].length;
++    console.log(JSON.stringify({ bun: Bun.version, platform: process.platform, arch: process.arch, engineRoot, checksum, results }, null, 2));
++    // Imported engine modules install housekeeping timers even with stub workers.
++    process.exit(0);
++}

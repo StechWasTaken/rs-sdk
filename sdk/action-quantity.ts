@@ -20,6 +20,25 @@ function testPattern(pattern: string | RegExp, value: string): boolean {
 }
 
 /**
+ * A player's name as the game displays it ("Acct 74e9ad") plus the login form
+ * it came from ("acct_74e9ad": lowercased, spaces back to underscores). The
+ * game title-cases login names and turns underscores into spaces, so matching
+ * only the displayed form can't find a player by the name it logged in with.
+ */
+export function playerNameForms(name: string): string[] {
+    const login = name.toLowerCase().replace(/ /g, '_');
+    return login === name ? [name] : [name, login];
+}
+
+/**
+ * Match a player name in either its displayed or login form: strings are a
+ * case-insensitive substring match, RegExps are tested as-is.
+ */
+export function matchesPlayerName(pattern: string | RegExp, name: string): boolean {
+    return playerNameForms(name).some(form => testPattern(pattern, form));
+}
+
+/**
  * Resolve a published interface option by object identity or visible text.
  *
  * `InterfaceOption.index` is a human-facing 1-based label, but
@@ -47,10 +66,14 @@ export function resolveInterfaceOption(
  * an unreachable one (the "nearest man is inside the castle" trap). If every
  * match is unreachable the best of them is still returned - callers can check
  * `.reachable` and decide to walk, wait, or skip.
+ *
+ * `nameForms` lists the spellings a name may be matched by (default: just the
+ * name); players pass {@link playerNameForms} so login names match too.
  */
 export function shortestNameMatch<T extends { name: string; reachable?: boolean }>(
     items: readonly T[],
     pattern: string | RegExp,
+    nameForms: (name: string) => readonly string[] = name => [name],
 ): T | null {
     if (typeof pattern !== 'string' && !(pattern instanceof RegExp)) {
         // A numeric id (or undefined) used to surface as a cryptic
@@ -65,7 +88,7 @@ export function shortestNameMatch<T extends { name: string; reachable?: boolean 
         let best: T | null = null;
         let bestReachable: T | null = null;
         for (const item of items) {
-            if (!matches(item.name)) continue;
+            if (!nameForms(item.name).some(matches)) continue;
             if (!best || item.name.length < best.name.length) best = item;
             if (item.reachable !== false && (!bestReachable || item.name.length < bestReachable.name.length)) {
                 bestReachable = item;

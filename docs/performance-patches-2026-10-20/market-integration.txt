@@ -1,0 +1,29 @@
+$ cd server/engine && bun test/market-integration.ts && bun test/market-recovery.ts && bun test/market-protocol.ts && bun test/market-disabled.ts
+10/20/2026 7:10:13 AM	 DEBUG	 Loading game map
+10/20/2026 7:10:13 AM	 DEBUG	 8142/16383 static NPCs added
+PASS: SDK search/place/cancel/collect receipts, rejection, six slots, native state encoding and remote/floor guards.
+PASS: compiled booth → native fuzzy search/selection/click/count handlers → noted escrow → matching → 5% burn → local collection → save recovery → HTTP market data.
+10/20/2026 7:10:14 AM	 ERROR	 logger thread exited with code 0
+10/20/2026 7:10:14 AM	 ERROR	 login thread exited with code 0
+10/20/2026 7:10:14 AM	 ERROR	 friend thread exited with code 0
+PASS: temporary owned inventories recover without changing live trades.
+PASS: completed transfers and pending logout saves recover exactly once.
+PASS: stack overflow remains durable and bank recovery handles notes.
+PASS: empty collections, one-checkpoint batching and failed saves are safe.
+PASS: existing version 7 saves remain readable.
+10/20/2026 7:10:14 AM	 ERROR	 logger thread exited with code 0
+10/20/2026 7:10:14 AM	 ERROR	 login thread exited with code 0
+10/20/2026 7:10:14 AM	 ERROR	 friend thread exited with code 0
+Ignoring interface update 59 for missing component 65535; reload the page to update the interface cache.
+Ignoring interface update 138 for missing component 65535; reload the page to update the interface cache.
+Ignoring interface update 160 for missing component 65535; reload the page to update the interface cache.
+Ignoring interface update 18 for missing component 65535; reload the page to update the interface cache.
+Ignoring interface update 79 for missing component 65535; reload the page to update the interface cache.
+Ignoring interface update 107 for missing component 65535; reload the page to update the interface cache.
+PASS: stale/missing exchange components never disconnect or desynchronize the native client.
+10/20/2026 7:10:15 AM	 DEBUG	 Loading game map
+10/20/2026 7:10:15 AM	 DEBUG	 8141/16383 static NPCs added
+Disabled GE: world, original table restoration, handlers, HTTP, ordinary saves and checkpoint recovery passed.
+10/20/2026 7:10:15 AM	 ERROR	 logger thread exited with code 0
+10/20/2026 7:10:15 AM	 ERROR	 login thread exited with code 0
+10/20/2026 7:10:15 AM	 ERROR	 friend thread exited with code 0

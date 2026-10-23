@@ -10,6 +10,9 @@ import Environment from '#/util/Environment.js';
 import { printError, printInfo } from '#/util/Logger.js';
 import { startManagementWeb, startWeb } from '#/web.js';
 import OnDemand from '#/engine/OnDemand.js';
+import { registerMemoryWorker, startMemoryDiagnostics } from '#/util/MemoryDiagnostics.js';
+
+startMemoryDiagnostics('engine', () => ({ tick: World.currentTick, players: World.getTotalPlayers(), pendingLogins: World.newPlayers.size }));
 
 if (OnDemand.cache.count(0) !== 9 || OnDemand.cache.count(2) === 0 || !fs.existsSync('data/pack/server/script.dat')) {
     printInfo('Packing cache, please wait until you see the world is ready.');
@@ -30,6 +33,7 @@ if (OnDemand.cache.count(0) !== 9 || OnDemand.cache.count(2) === 0 || !fs.exists
 if (Environment.easyStartup) {
     for (const server of ['login', 'friend', 'logger']) {
         const worker = new Worker(new URL(`./${server}.ts`, import.meta.url));
+        registerMemoryWorker(worker, server);
         worker.on('error', err => printError(`${server} server worker error: ${err.message ?? err}`));
         worker.on('exit', code => printError(`${server} server worker exited with code ${code}`));
     }

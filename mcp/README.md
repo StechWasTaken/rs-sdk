@@ -74,6 +74,47 @@ execute_code({
 });
 ```
 
+Pass values through `args` instead of splicing them into the code string, and
+use `world` to choose how much state comes back (`brief` by default, `full`, or
+`none` when calling in a loop):
+
+```typescript
+execute_code({ bot_name: "mybot", code: "return bot.walkTo(args.x, args.z);", args: { x: 3222, z: 3218 }, world: "none" });
+```
+
+To reuse a routine, give `script` a module path (absolute, or relative to the
+repo root) in place of `code`. The module is reloaded whenever it changes.
+Calling `runScript(main)` behind `if (import.meta.main)` keeps the same file
+runnable standalone:
+
+```typescript
+// bots/mybot/chop.ts
+import { runScript, type ScriptFunction } from '../../sdk/runner';
+const main: ScriptFunction = async ({ bot, sdk, args }) => { /* ... */ return sdk.getInventory(); };
+export default main;
+if (import.meta.main) runScript(main);
+```
+
+Results include a readable text block for the model, plus `structuredContent`
+for code-mode harnesses (it matches the tool's `outputSchema`):
+
+```typescript
+{
+  ok: boolean,
+  result: unknown,          // the returned JSON value (credentials redacted), or null
+  logs: string[],
+  error: { kind, message, activeActions } | null,
+  elapsedMs: number,
+  world: { player, skills, inventory, equipment, dialog, modal, nearby, messages, ... } | null,
+}
+```
+
+`error.kind` is one of `exception`, `timeout`, `superseded` (a newer call for
+the same bot replaced this one), `cancelled`, `not_connected`, `invalid_input`
+or `unserializable_result`. Nearby lists are `{ total, items }`, capped by the
+`world` option only, so a probe on a quiet tile has the same shape as the
+result on a busy one.
+
 ### `list_bots`
 
 List all connected bots and their status.

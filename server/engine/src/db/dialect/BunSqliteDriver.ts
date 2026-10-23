@@ -65,20 +65,23 @@ class BunSqliteConnection implements DatabaseConnection {
             try {
                 const { sql, parameters } = compiledQuery;
                 const stmt = this.#db.prepare(sql);
+                try {
+                    if (stmt.columnNames.length > 0) {
+                        return { rows: stmt.all(parameters as any) as O[] };
+                    }
 
-                if (stmt.columnNames.length > 0) {
-                    return Promise.resolve({
-                        rows: stmt.all(parameters as any) as O[]
-                    });
+                    const results = stmt.run(parameters as any);
+                    return {
+                        insertId: BigInt(results.lastInsertRowid),
+                        numAffectedRows: BigInt(results.changes),
+                        rows: []
+                    };
+                } finally {
+                    // prepare() is uncached. Its native bytecode and bound values can
+                    // retain hundreds of MiB before JS GC notices these small wrappers.
+                    // Release on success, query failure, and before every busy retry.
+                    stmt.finalize();
                 }
-
-                const results = stmt.run(parameters as any);
-
-                return Promise.resolve({
-                    insertId: BigInt(results.lastInsertRowid),
-                    numAffectedRows: BigInt(results.changes),
-                    rows: []
-                });
             } catch (err) {
                 if (err instanceof SQLiteError && err.errno === 5) {
                     // database is locked, retry
@@ -107,12 +110,13 @@ class BunSqliteConnection implements DatabaseConnection {
         const { sql, parameters } = compiledQuery;
         const stmt = this.#db.prepare(sql);
 
-        if (!('iterator' in stmt)) {
-            throw new Error('bun:sqlite supports streaming in 1.1.31 or above. Please upgrade to use streaming.');
-        }
-
-        for await (const row of stmt.iterate(parameters as any)) {
-            yield { rows: [row as R] };
+        try {
+            for (const row of stmt.iterate(parameters as any)) {
+                yield { rows: [row as R] };
+            }
+        } finally {
+            // Also runs when the consumer breaks out before exhausting the cursor.
+            stmt.finalize();
         }
     }
 }

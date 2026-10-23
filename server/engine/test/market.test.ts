@@ -46,6 +46,30 @@ class Wallet {
     }
 }
 describe('Grand Exchange conservation and matching', () => {
+    test('identical checkpoints skip writes without losing enrollment or rollback safety', () => {
+        const s = store();
+        const first = Uint8Array.of(0, 128, 255);
+        const next = Uint8Array.of(0, 129, 255);
+        const changes = () => (s.db.query('SELECT total_changes() AS n').get() as { n: number }).n;
+        s.checkpoint('new', first);
+        expect(s.saved('new')).toBeUndefined();
+        s.checkpoint('new', first, true);
+        const enrolled = changes();
+        s.checkpoint('new', first.slice(), true);
+        s.checkpoint('new', first.slice());
+        expect(changes()).toBe(enrolled);
+        expect(() => s.db.transaction(() => {
+            s.checkpoint('new', next, true);
+            throw new Error('rollback');
+        }).immediate()).toThrow('rollback');
+        expect(s.saved('new')).toEqual(first);
+        s.checkpoint('new', next, true);
+        expect(s.saved('new')).toEqual(next);
+        s.checkpoint('new', first);
+        expect(s.saved('new')).toEqual(first);
+        s.checkpoint('new', new Uint8Array());
+        expect(s.saved('new')).toEqual(new Uint8Array());
+    });
     test('unmatched offers escrow real assets and never invent a counterparty', () => {
         const s = store(),
             a = new Wallet('buyer', 200);

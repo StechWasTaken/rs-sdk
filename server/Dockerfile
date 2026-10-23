@@ -76,6 +76,7 @@ fi
 
 # Run migrations (idempotent - only applies pending migrations)
 echo "Running database migrations..."
+cd /opt/server/engine && bun tools/server/backup-playtime-migration.ts /opt/server/data
 cd /opt/server/engine && bun run sqlite:migrate
 
 # === PLAYER SAVES ===

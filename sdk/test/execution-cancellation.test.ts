@@ -2,7 +2,11 @@ import { describe, expect, test } from 'bun:test';
 import { BotSDK } from '../index';
 import { BotActions } from '../actions';
 import { executionContext, executionWait } from '../execution-context';
-import { executeCode, BotExecutions } from '../../mcp/execute-code';
+import { executeCode, BotExecutions, EXECUTE_CODE_OUTPUT_SCHEMA, type ExecuteCodeResult } from '../../mcp/execute-code';
+import { AjvJsonSchemaValidator } from '@modelcontextprotocol/sdk/validation/ajv';
+import { mkdtempSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import { formatLogArgument, installExecutionConsoleCapture } from '../../mcp/console-capture';
 
 function harness() {
@@ -11,7 +15,7 @@ function harness() {
     const packets: any[] = [];
     internal.state = {
         inGame: true, tick: 1,
-        player: { name: 'test', worldX: 3200, worldZ: 3200, x: 128, z: 128, level: 0, lifeId: 1, combat: { inCombat: false }, animId: -1 },
+        player: { name: 'test', worldX: 3200, worldZ: 3200, x: 128, z: 128, level: 0, lifeId: 1, combat: { inCombat: false }, animId: -1, combatLevel: 3, hp: 10, maxHp: 10, runEnergy: 100, isDead: false },
         inventory: [], skills: [], gameMessages: [], nearbyLocs: [], nearbyNpcs: [], nearbyPlayers: [], groundItems: [],
         dialog: { isOpen: false }, interface: { isOpen: false }, bank: { isOpen: false }, shop: { isOpen: false },
     };
@@ -220,5 +224,113 @@ describe('execution cancellation', () => {
         const result = await executeCode(h.manager, 'test', 'return "ok";', 100);
         expect(result.content[0]!.text).toContain('Position: (3200, 3200)');
         expect(result.content[0]!.text).not.toContain('Attack: 1 (0 xp)');
+    });
+});
+
+/** The shipped schema is lenient; a strict copy catches fields the summary gained or lost without the schema. */
+function strict(schema: any): any {
+    if (Array.isArray(schema)) return schema.map(strict);
+    if (!schema || typeof schema !== 'object') return schema;
+    const copy = Object.fromEntries(Object.entries(schema).map(([key, value]) => [key, strict(value)]));
+    return copy.type === 'object' && copy.properties ? { ...copy, additionalProperties: false } : copy;
+}
+const validate = new AjvJsonSchemaValidator().getValidator(strict(EXECUTE_CODE_OUTPUT_SCHEMA));
+const structured = (result: { structuredContent?: unknown }) => {
+    const check = validate(result.structuredContent);
+    if (!check.valid) throw new Error(`structuredContent violates the output schema: ${check.errorMessage}`);
+    return result.structuredContent as ExecuteCodeResult;
+};
+
+describe('execute_code structured results', () => {
+    test('a full world summary matches the output schema', async () => {
+        const h = harness();
+        h.internal.state.skills = [{ name: 'Attack', level: 1, baseLevel: 1, experience: 0 }];
+        h.internal.state.inventory = [{ slot: 0, id: 1511, name: 'Logs', count: 1, optionsWithIndex: [] }];
+        h.internal.state.nearbyNpcs = Array.from({ length: 12 }, (_, i) => ({
+            kind: 'npc', id: 1, index: i, name: 'Man', combatLevel: 2, x: 3201, z: 3200, distance: 1,
+            hp: null, maxHp: null, inCombat: false, options: ['Talk-to'], reachable: true,
+        }));
+        h.internal.state.nearbyLocs = [{ id: 1276, name: 'Tree', x: 3202, z: 3200, level: 0, distance: 2, options: ['Chop down'] }];
+        h.internal.state.dialog = { isOpen: true, isWaiting: false, text: 'Hello', options: [{ index: 1, text: 'Yes' }] };
+        h.internal.state.interface = { isOpen: true, interfaceId: 2400, options: [{ index: 1, text: 'Make', componentId: 2401 }] };
+        h.internal.state.gameMessages = [
+            { type: 0, text: 'You can\'t reach that!', sender: '', tick: 1, fromSelf: false },
+            { type: 3, text: '@red@hi', sender: 'friend', tick: 1, fromSelf: false },
+        ];
+
+        const brief = structured(await executeCode(h.manager, 'test', 'return { n: 1 };', 100));
+        expect(brief).toMatchObject({ ok: true, result: { n: 1 }, error: null });
+        expect(brief.world!.nearby.npcs).toMatchObject({ total: 12 });
+        expect(brief.world!.nearby.npcs.items).toHaveLength(10);
+        expect(brief.world!.messages).toEqual({ chat: [{ from: 'friend', text: 'hi', private: true }], system: ['You can\'t reach that!'] });
+        expect(brief.world!.modal).toEqual({ kind: 'interface', interfaceId: 2400, options: [{ componentId: 2401, text: 'Make' }] });
+
+        const full = structured(await executeCode(h.manager, 'test', 'return null;', 100, undefined, undefined, { world: 'full' }));
+        expect(full.world!.nearby.npcs.items).toHaveLength(12);
+        expect(full.world!.messages.system).toEqual([]); // already shown by the previous call
+    });
+
+    test('args reach the code and may be redeclared', async () => {
+        const h = harness();
+        const result = structured(await executeCode(h.manager, 'test', 'const args2 = args; { const args = 1; } return [args2.x, typeof bot.walkTo];', 100, undefined, undefined, { args: { x: 5 } }));
+        expect(result.result).toEqual([5, 'function']);
+        const shadow = structured(await executeCode(h.manager, 'test', 'const args = "mine"; return args;', 100, undefined, undefined, { args: 1 }));
+        expect(shadow.result).toBe('mine');
+    });
+
+    test('world: none omits the snapshot', async () => {
+        const h = harness();
+        const result = await executeCode(h.manager, 'test', 'return 1;', 100, undefined, undefined, { world: 'none' });
+        expect(structured(result).world).toBeNull();
+        expect(result.content[0]!.text).not.toContain('World State');
+    });
+
+    test('errors carry a kind', async () => {
+        const h = harness();
+        const kind = async (...call: Parameters<typeof executeCode>) => {
+            const result = await executeCode(...call);
+            expect(result.isError).toBeTrue();
+            return structured(result).error!.kind;
+        };
+        expect(await kind(h.manager, 'test', "throw new Error('boom');", 100)).toBe('exception');
+        expect(await kind(h.manager, 'test', 'await bot.walkTo(3208, 3200);', 20)).toBe('timeout');
+        expect(await kind(h.manager, 'test', 'return 10n;', 100)).toBe('unserializable_result');
+        const down = { get: () => undefined, connect: async () => { throw new Error('no bot.env'); } };
+        expect(await kind(down, 'test', 'return 1;', 100)).toBe('not_connected');
+        const controller = new AbortController();
+        const cancelled = kind(h.manager, 'test', 'await bot.walkTo(3208, 3200);', 1000, controller.signal);
+        await Bun.sleep(5);
+        controller.abort();
+        expect(await cancelled).toBe('cancelled');
+
+        const executions = new BotExecutions();
+        const first = kind(h.manager, 'test', 'await bot.walkTo(3208, 3200);', 1000, undefined, executions);
+        await Bun.sleep(5);
+        const second = executeCode(h.manager, 'test', 'return 1;', 1000, undefined, executions);
+        expect(await first).toBe('superseded');
+        expect(structured(await second).ok).toBeTrue();
+    });
+
+    test('results are redacted as data, not as text', async () => {
+        const h = harness();
+        const result = structured(await executeCode(h.manager, 'test', 'return { url: "wss://h/x?password=hunter2", password: "p", note: "a@b:c" };', 100));
+        expect(result.result).toEqual({ url: 'wss://h/x?password=[REDACTED]', password: '[REDACTED]', note: 'a@b:c' });
+    });
+
+    test('runs a script module and refuses a bare runScript file', async () => {
+        const h = harness();
+        const dir = mkdtempSync(join(tmpdir(), 'exec-script-'));
+        const good = join(dir, 'good.ts');
+        writeFileSync(good, 'export default async ({ sdk, args }: any) => ({ age: typeof sdk.getStateAge(), doubled: args * 2 });\n');
+        expect(structured(await executeCode(h.manager, 'test', { script: good }, 100, undefined, undefined, { args: 21 })).result).toEqual({ age: 'number', doubled: 42 });
+
+        writeFileSync(good, 'export default async () => "edited";\n');
+        expect(structured(await executeCode(h.manager, 'test', { script: good }, 100)).result).toBe('edited');
+
+        const bare = join(dir, 'bare.ts');
+        writeFileSync(bare, 'import { runScript } from "x";\nrunScript(async () => {});\n');
+        const refused = structured(await executeCode(h.manager, 'test', { script: bare }, 100));
+        expect(refused.error).toMatchObject({ kind: 'invalid_input' });
+        expect(structured(await executeCode(h.manager, 'test', { script: join(dir, 'missing.ts') }, 100)).error).toMatchObject({ kind: 'invalid_input' });
     });
 });

@@ -1,0 +1,206 @@
+# profile 5000ms @ 500us, 5733 samples (~57% of wall busy in JS), ticks 146373..146379, players 1879
+
+# inclusive samples per frame (top 60)
+  1987   34.7%  checkpointPlayers src/engine/World.ts:1457
+  1095   19.1%  cycle src/engine/World.ts:402
+  1083   18.9%  cycle src/engine/World.ts:458
+  1058   18.5%  processClientsIn src/engine/World.ts:701
+  1043   18.2%  decodeIn src/engine/entity/NetworkPlayer.ts:69
+   987   17.2%  transaction bun:sqlite:401
+   920   16.0%  cycle src/engine/World.ts:428
+   917   16.0%  read src/engine/entity/NetworkPlayer.ts:138
+   914   15.9%  processLogouts src/engine/World.ts:886
+   913   15.9%  removePlayer src/engine/World.ts:1851
+   912   15.9%  flushPlayer src/engine/World.ts:2843
+   885   15.4%  cycle src/engine/World.ts:434
+   838   14.6%  handle src/network/game/client/handler/IfButtonHandler.ts:25
+   821   14.3%  transfer src/engine/market/MarketStore.ts:114
+   818   14.3%  save src/engine/entity/Player.ts:312
+   818   14.3%  processLogins src/engine/World.ts:1010
+   766   13.4%  save src/engine/market/GrandExchange.ts:147
+   766   13.4%  (anon) src/engine/market/MarketStore.ts:111
+   672   11.7%  p2 src/io/Packet.ts:308
+   629   11.0%  cycle src/engine/World.ts:425
+   533    9.3%  updatePlayers src/engine/entity/NetworkPlayer.ts:288
+   533    9.3%  processClientsOut src/engine/World.ts:1301
+   505    8.8%  run Unknown Executable
+   486    8.5%  execute src/engine/script/ScriptRunner.ts:156
+   481    8.4%  checkpointPlayers src/engine/World.ts:1463
+   479    8.4%  executeScript src/engine/entity/Player.ts:2271
+   477    8.3%  p1 src/io/Packet.ts:304
+   474    8.3%  runScript src/engine/entity/Player.ts:2244
+   450    7.8%  alloc src/io/Packet.ts:130
+   450    7.8%  save src/engine/entity/Player.ts:210
+   422    7.4%  send Unknown Executable
+   403    7.0%  checkpoint src/engine/market/MarketStore.ts:99
+   403    7.0%  (anon) src/engine/World.ts:1462
+   393    6.9%  exchangeButton src/engine/market/GrandExchange.ts:464
+   378    6.6%  #run bun:sqlite:187
+   367    6.4%  write src/engine/entity/Player.ts:2310
+   347    6.1%  sendNow src/server/ws/WSClientSocket.ts:98
+   344    6.0%  processPlayers src/engine/World.ts:801
+   321    5.6%  generatorResume FTL
+   292    5.1%  save src/engine/entity/Player.ts:262
+   277    4.8%  p4 src/io/Packet.ts:324
+   273    4.8%  exchangeButton src/engine/market/GrandExchange.ts:532
+   271    4.7%  encode src/network/rsbuf/info.ts:37
+   270    4.7%  writeInner src/engine/entity/NetworkPlayer.ts:226
+   268    4.7%  tryInteract src/engine/entity/Player.ts:1233
+   245    4.3%  next FTL
+   237    4.1%  save src/engine/entity/Player.ts:243
+   235    4.1%  subarray Unknown Executable
+   231    4.0%  highdefinition src/network/rsbuf/info.ts:190
+   218    3.8%  send src/server/ws/WSClientSocket.ts:49
+   205    3.6%  extend src/network/rsbuf/info.ts:178
+   203    3.5%  setUint16 Unknown Executable
+   202    3.5%  writePlayers src/network/rsbuf/info.ts:84
+   187    3.3%  save src/engine/entity/Player.ts:307
+   187    3.3%  save src/engine/entity/Player.ts:271
+   182    3.2%  processClientsOut src/engine/World.ts:1305
+   181    3.2%  cycle src/engine/World.ts:461
+   180    3.1%  save src/engine/entity/Player.ts:229
+   177    3.1%  pdata src/network/rsbuf/packet.ts:44
+   163    2.8%  processInteraction src/engine/entity/Player.ts:1326
+
+# hottest leaf <- nearest source caller (top 60)
+   391    6.8%  alloc src/io/Packet.ts:130  <-  save src/engine/entity/Player.ts:210
+   373    6.5%  run Unknown Executable  <-  #run bun:sqlite:187
+   342    6.0%  send Unknown Executable  <-  sendNow src/server/ws/WSClientSocket.ts:98
+   214    3.7%  p2 src/io/Packet.ts:308  <-  save src/engine/entity/Player.ts:243
+   203    3.5%  setUint16 Unknown Executable  <-  p2 src/io/Packet.ts:308
+   174    3.0%  p4 src/io/Packet.ts:324  <-  save src/engine/entity/Player.ts:307
+   173    3.0%  p1 src/io/Packet.ts:304  <-  save src/engine/entity/Player.ts:271
+   170    3.0%  p1 src/io/Packet.ts:304  <-  save src/engine/entity/Player.ts:229
+   133    2.3%  p2 src/io/Packet.ts:308  <-  save src/engine/entity/Player.ts:262
+   132    2.3%  run Unknown Executable  <-  #runNoArgs bun:sqlite:140
+   111    1.9%  (anon) src/web/pages/hiscores.ts:110  <-  rankIn src/web/pages/hiscores.ts:108
+   110    1.9%  subarray Unknown Executable  <-  pdata src/network/rsbuf/packet.ts:44
+    78    1.4%  getNearbyPlayersZones src/network/rsbuf/build.ts:135  <-  writeNewPlayers src/network/rsbuf/info.ts:96
+    77    1.3%  p2 src/io/Packet.ts:308  <-  save src/engine/entity/Player.ts:258
+    74    1.3%  highdefinition src/network/rsbuf/info.ts:190  <-  extend src/network/rsbuf/info.ts:178
+    65    1.1%  set Unknown Executable  <-  read src/server/ClientSocket.ts:54
+    57    1.0%  execute src/engine/script/ScriptRunner.ts:156  <-  runScript src/engine/entity/Player.ts:2244
+    53    0.9%  updateZones src/engine/entity/NetworkPlayer.ts:308  <-  processClientsOut src/engine/World.ts:1305
+    50    0.9%  get buffer Unknown Executable  <-  Packet src/io/Packet.ts:87
+    47    0.8%  getNearbyNpcs src/network/rsbuf/build.ts:4294967295  <-  writeNewNpcs src/network/rsbuf/info.ts:336
+    46    0.8%  updateZones src/engine/entity/NetworkPlayer.ts:314  <-  processClientsOut src/engine/World.ts:1305
+    45    0.8%  fill Unknown Executable  <-  Inventory src/engine/Inventory.ts:61
+    43    0.8%  subarray Unknown Executable  <-  pdata src/io/Packet.ts:352
+    38    0.7%  subarray Unknown Executable  <-  writeInner src/engine/entity/NetworkPlayer.ts:226
+    36    0.6%  generatorResume FTL  <-  processWorld src/engine/World.ts:663
+    35    0.6%  pdata src/network/rsbuf/packet.ts:44  <-  write src/network/rsbuf/renderer.ts:113
+    34    0.6%  setUint8 Unknown Executable  <-  p1 src/io/Packet.ts:304
+    34    0.6%  generatorResume FTL  <-  getPlayerByUsername src/engine/World.ts:1952
+    33    0.6%  setInt32 Unknown Executable  <-  p4 src/io/Packet.ts:324
+    32    0.6%  send Unknown Executable  <-  send src/web/worldfeed.ts:610
+    30    0.5%  checkpointPlayers src/engine/World.ts:1457  <-  flushPlayer src/engine/World.ts:2843
+    30    0.5%  p1 src/io/Packet.ts:304  <-  save src/engine/entity/Player.ts:250
+    30    0.5%  zoneByIndex src/engine/zone/ZoneMap.ts:4294967295  <-  updateZones src/engine/entity/NetworkPlayer.ts:308
+    30    0.5%  writeInner src/engine/entity/NetworkPlayer.ts:4294967295  <-  write src/engine/entity/Player.ts:2310
+    29    0.5%  p4 src/io/Packet.ts:324  <-  save src/engine/entity/Player.ts:225
+    29    0.5%  send Unknown Executable  <-  message src/web/websocket.ts:167
+    28    0.5%  set Unknown Executable  <-  pdata src/network/rsbuf/packet.ts:44
+    26    0.5%  processTimers src/engine/entity/Player.ts:4294967295  <-  processPlayers src/engine/World.ts:788
+    25    0.4%  getNearbyPlayersNearest src/network/rsbuf/build.ts:167  <-  writeNewPlayers src/network/rsbuf/info.ts:96
+    25    0.4%  (anon) src/web/worldfeed.ts:322  <-  forEachInRect src/web/worldfeed.ts:300
+    24    0.4%  p2 src/io/Packet.ts:308  <-  save src/engine/entity/Player.ts:257
+    24    0.4%  prepare Unknown Executable  <-  prepare bun:sqlite:328
+    23    0.4%  subarray Unknown Executable  <-  read src/server/ClientSocket.ts:50
+    23    0.4%  getId src/cache/config/InvType.ts:54  <-  save src/engine/entity/Player.ts:296
+    23    0.4%  encode src/network/rsbuf/info.ts:22  <-  updatePlayers src/engine/entity/NetworkPlayer.ts:288
+    22    0.4%  p1 src/io/Packet.ts:304  <-  save src/engine/entity/Player.ts:216
+    22    0.4%  query bun:sqlite:346  <-  checkpoint src/engine/market/MarketStore.ts:99
+    21    0.4%  p4 src/io/Packet.ts:324  <-  save src/engine/entity/Player.ts:269
+    21    0.4%  checkpointPlayers src/engine/World.ts:1457  <-  save src/engine/entity/Player.ts:312
+    20    0.3%  generatorResume FTL  <-  getAllPlayersSafe src/engine/zone/Zone.ts:412
+    19    0.3%  send Unknown Executable  <-  (anon) src/web/websocket.ts:131
+    19    0.3%  p1 src/io/Packet.ts:304  <-  save src/engine/entity/Player.ts:287
+    19    0.3%  p4 src/io/Packet.ts:324  <-  save src/engine/entity/Player.ts:228
+    19    0.3%  resetEntity src/engine/entity/Player.ts:527  <-  processCleanup src/engine/World.ts:1343
+    17    0.3%  processInputTracking src/engine/entity/Player.ts:4294967295  <-  processClientsIn src/engine/World.ts:699
+    17    0.3%  processInfo src/engine/World.ts:1241  <-  cycle src/engine/World.ts:447
+    17    0.3%  getAllPlayersSafe src/engine/zone/Zone.ts:412  <-  generator src/engine/script/ScriptIterators.ts:79
+    16    0.3%  checkpointPlayers src/engine/World.ts:1457  <-  save src/engine/market/GrandExchange.ts:147
+    16    0.3%  writePlayers src/network/rsbuf/info.ts:80  <-  encode src/network/rsbuf/info.ts:37
+    16    0.3%  getInventory src/engine/entity/Player.ts:1545  <-  updateInvs src/engine/entity/NetworkPlayer.ts:367
+
+
+
+Sampling rate: 500.000000 microseconds. Total samples: 5731
+Top functions as <numSamples  'functionName#hash:sourceID'>
+   505    'run#<nil>:4294967295'
+   469    'p2#BlMC9G:14'
+   443    'p1#EDIDbJ:14'
+   422    'send#<nil>:4294967295'
+   391    'alloc#D2OrcE:14'
+   244    'p4#BI39uh:14'
+   235    'subarray#<nil>:4294967295'
+   203    'setUint16#<nil>:4294967295'
+   131    'generatorResume#ARlJXG:9'
+   111    '#EWEtHh:71'
+   107    'set#<nil>:4294967295'
+   103    'updateZones#Aa1LXd:32'
+
+
+
+
+Sampling rate: 500.000000 microseconds. Total samples: 5732
+
+Tier breakdown:
+-----------------------------------
+LLInt:                     0  (0.000000%)
+Baseline:                 50  (0.872296%)
+DFG:                     433  (7.554082%)
+FTL:                    3402  (59.351012%)
+js builtin:              197  (3.436846%)
+IPInt:                     0  (0.000000%)
+BBQ:                       0  (0.000000%)
+OMG:                       0  (0.000000%)
+Wasm:                      0  (0.000000%)
+Host:                     24  (0.418702%)
+RegExp:                    3  (0.052338%)
+C/C++:                     0  (0.000000%)
+Unknown Executable:     1820  (31.751570%)
+
+
+Hottest bytecodes as <numSamples   'functionName#hash:JITType:bytecodeIndex'>
+   505    'run#<nil>:None:<nil>'
+   469    'p2#BlMC9G:FTL:bc#27'
+   443    'p1#EDIDbJ:FTL:bc#46'
+   422    'send#<nil>:None:<nil>'
+   391    'alloc#D2OrcE:FTL:bc#495'
+   244    'p4#BI39uh:FTL:bc#27'
+   235    'subarray#<nil>:None:<nil>'
+   203    'setUint16#<nil>:None:<nil>'
+   107    'set#<nil>:None:<nil>'
+    93    'generatorResume#ARlJXG:FTL:bc#45'
+    82    'highdefinition#DioUQP:FTL:bc#93'
+    78    'getNearbyPlayersZones#AOaeSZ:FTL:bc#0'
+    66    '#EWEtHh:FTL:bc#48'
+    63    'get buffer#<nil>:None:<nil>'
+    61    'execute#AmQfaA:FTL:bc#553'
+    53    'updateZones#Aa1LXd:DFG:bc#274'
+    50    'fill#<nil>:None:<nil>'
+    47    'getNearbyNpcs#EYP8sY:FTL:<nil>'
+    46    'updateZones#Aa1LXd:DFG:bc#406'
+    45    '#EWEtHh:FTL:bc#89'
+    40    'checkpointPlayers#AaA2VH:DFG:bc#410'
+    39    'pdata#CRjQvR:FTL:bc#49'
+    39    'all#BSCFpf:FTL:<nil>'
+    37    'generatorResume#ARlJXG:FTL:bc#79'
+    34    'setUint8#<nil>:None:<nil>'
+    33    'setInt32#<nil>:None:<nil>'
+    30    'zoneByIndex#DJzBZZ:FTL:<nil>'
+    30    'writeInner#DxC65p:FTL:<nil>'
+    29    'get#<nil>:None:<nil>'
+    28    'processTimers#CI9cwI:FTL:<nil>'
+    28    'execute#AmQfaA:FTL:bc#459'
+    27    'checkpointPlayers#AaA2VH:DFG:bc#417'
+    25    '#CGTI2K:FTL:bc#83'
+    25    'getNearbyPlayersNearest#EZRSgY:FTL:bc#0'
+    24    'prepare#<nil>:None:<nil>'
+    23    'getId#ADvmft:FTL:bc#35'
+    23    'encode#AuVs8I:FTL:bc#0'
+    22    'stringify#<nil>:None:<nil>'
+    22    'query#C2Wwgi:FTL:bc#224'
+    21    'read#DJxWWe:FTL:bc#139'

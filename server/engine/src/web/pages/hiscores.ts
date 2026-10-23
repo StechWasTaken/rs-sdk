@@ -1,3 +1,4 @@
+import { formatNormalizedPlaytime } from '#/util/Playtime.js';
 import { db, toDbDate } from '#/db/query.js';
 import Environment from '#/util/Environment.js';
 import { tryParseInt } from '#/util/TryParse.js';
@@ -8,6 +9,10 @@ import type { BankSnapshot } from './BankHiscores.js';
 import { loadRankedList, type RankedRow } from './RankedHiscores.js';
 
 const hiddenNames = Environment.HISCORES_HIDDEN_NAMES;
+
+// All records use the current pace, including records spanning tick-rate changes.
+// Accumulated playtime_ms remains stored separately as historical game duration.
+const formatPlaytime = (ticks: number) => formatNormalizedPlaytime(ticks, Environment.NODE_TICKRATE);
 
 // Shared CSS styles for hiscores pages
 const HISCORES_STYLES = `
@@ -54,18 +59,6 @@ function formatStackCount(count: number): string {
         return `${Math.floor(count / 1_000)}K`;
     }
     return `${count}`;
-}
-
-// Format playtime (in game ticks) to human-readable string, with the exact tick count on hover
-function formatPlaytime(ticks: number): string {
-    const totalSeconds = Math.floor(ticks * (Environment.NODE_TICKRATE / 1000));
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
-    // Zero-pad below the leading unit so right-aligned columns line up on h/m/s.
-    const pad = (n: number) => String(n).padStart(2, '0');
-    const time = hours > 0 ? `${hours}h ${pad(minutes)}m ${pad(seconds)}s` : minutes > 0 ? `${minutes}m ${pad(seconds)}s` : `${seconds}s`;
-    return `<span title="${ticks.toLocaleString()} ticks" style="font-variant-numeric: tabular-nums">${time}</span>`;
 }
 
 // Serve complete snapshots while the read worker refreshes rankings off the tick thread.

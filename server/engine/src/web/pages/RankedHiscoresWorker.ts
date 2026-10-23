@@ -1,6 +1,9 @@
 import { parentPort } from 'node:worker_threads';
 import { db } from '#/db/query.js';
 import Environment from '#/util/Environment.js';
+import { startMemoryDiagnostics } from '#/util/MemoryDiagnostics.js';
+
+startMemoryDiagnostics('rankings');
 
 // The general SQLite adapter logs errors and returns empty rows. Rankings must
 // propagate failures instead, so an unavailable DB cannot erase a good snapshot.
@@ -21,8 +24,13 @@ parentPort!.on('message', async ({ id, profile, category }) => {
             query = query.where(eb => eb.not(eb(eb.fn('lower', ['account.username']), 'in', Environment.HISCORES_HIDDEN_NAMES)));
         }
         const compiled = query.compile();
-        const rows = sqlite ? sqlite.prepare(compiled.sql).all(...compiled.parameters as any[]) : await query.execute();
-        parentPort!.postMessage({ id, rows });
+        const statement = sqlite?.prepare(compiled.sql);
+        try {
+            const rows = statement ? statement.all(...compiled.parameters as any[]) : await query.execute();
+            parentPort!.postMessage({ id, rows });
+        } finally {
+            if (statement && 'finalize' in statement) statement.finalize();
+        }
     } catch (error) {
         parentPort!.postMessage({ id, error: String(error) });
     }

@@ -16,6 +16,8 @@ import { chunkMessage } from '../../sdk/chunking';
 import { repeatsLastFanout } from './state-fanout';
 import { StateFieldSampler, TrafficMeter, formatFieldReport, formatTrafficReport, type ConnectionLabel } from './traffic';
 import { isIP } from 'node:net';
+import { startMemoryDiagnostics } from '../engine/src/util/MemoryDiagnostics';
+import { networkPressure } from '../engine/src/util/NetworkPressure';
 
 const GATEWAY_PORT = parseInt(process.env.AGENT_PORT || '7780');
 // Bind address. Fleet hosts running a private gateway set 127.0.0.1 so only
@@ -280,16 +282,20 @@ const pendingTakeovers = new Map<string, PendingTakeover>();  // username -> pen
 // concurrent connect on the same socket can't slip through registration.
 const sdkConnecting = new Set<any>();
 
+startMemoryDiagnostics('gateway', () => ({ bots: botSessions.size, connectedBots: [...botSessions.values()].filter(s => s.ws !== null).length,
+    sdks: sdkSessions.size, pendingAuth: pendingAuthRequests.size, pendingTakeovers: pendingTakeovers.size, chatHistories: chatHistories.size }));
+
 // ============ Sync Module ============
 
 const SyncModule = {
     sendToBot(session: BotSession, message: SyncToBotMessage) {
         if (session.ws) {
             try {
+                if (!networkPressure.beforeSend(session.ws)) return;
                 const json = JSON.stringify(message);
                 traffic.record('bot_out', session.username, '', session.ws.data, json.length);
                 // compress only takes effect on sockets that negotiated deflate (public listener)
-                session.ws.send(json, true);
+                networkPressure.afterSend(session.ws, session.ws.send(json, true));
             } catch (error) {
                 console.error(`[Gateway] [${session.username}] Failed to send to bot:`, error);
             }
@@ -299,9 +305,11 @@ const SyncModule = {
     sendToSDK(session: SDKSession, message: SyncToSDKMessage) {
         if (session.ws) {
             try {
+                if (message.type === 'sdk_state' && networkPressure.skipState(session.ws)) return;
+                if (!networkPressure.beforeSend(session.ws)) return;
                 const json = JSON.stringify(message);
                 traffic.record('sdk_out', session.targetUsername, session.mode, session.ws.data, json.length);
-                session.ws.send(json, true);
+                networkPressure.afterSend(session.ws, session.ws.send(json, true));
             } catch (error) {
                 console.error(`[Gateway] [${session.sdkClientId}] Failed to send to SDK:`, error);
             }
@@ -384,6 +392,7 @@ const SyncModule = {
 
             // Authenticate bot using per-bot password (same as SDK auth)
             const authResult = await authenticateSDK(username, message.password || '');
+            if (ws.readyState !== 1) return;
             if (!authResult.success) {
                 console.log(`[Gateway] Bot auth failed: ${clientId} -> ${username} (${authResult.error})`);
                 try {
@@ -675,6 +684,7 @@ const SyncModule = {
     },
 
     handleClose(ws: any) {
+        sdkConnecting.delete(ws);
         const wsInfo = wsToType.get(ws);
         if (!wsInfo) return;
 
@@ -1186,8 +1196,11 @@ Bots: ${botSessions.size} | SDKs: ${sdkSessions.size}
     },
 
     websocket: {
+        backpressureLimit: 2 * 1024 * 1024,
+        closeOnBackpressureLimit: true,
         open(ws: any) {
             // Bot/SDK connections identify themselves via first message
+            networkPressure.register(ws, 'gateway', () => ws.getBufferedAmount(), () => ws.terminate());
         },
 
         message(ws: any, message: string | Buffer) {
@@ -1212,6 +1225,7 @@ Bots: ${botSessions.size} | SDKs: ${sdkSessions.size}
         },
 
         close(ws: any) {
+            networkPressure.remove(ws);
             try {
                 handleClose(ws);
             } catch (error) {

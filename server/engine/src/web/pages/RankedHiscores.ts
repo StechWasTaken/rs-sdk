@@ -1,4 +1,5 @@
 import { Worker } from 'node:worker_threads';
+import { registerMemoryWorker } from '#/util/MemoryDiagnostics.js';
 
 export type RankedRow = { username: string; level: number; playtime: number };
 type Job = { resolve: (rows: RankedRow[]) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout>; request: { profile: string; category: number } };
@@ -11,6 +12,7 @@ const jobs = new Map<number, Job>();
 export function loadRankedList(profile: string, category: number): Promise<RankedRow[]> {
     if (!worker) {
         const current = new Worker(new URL('./RankedHiscoresWorker.ts', import.meta.url));
+        registerMemoryWorker(current, 'rankings');
         worker = current;
         workerReady = false;
         const fail = (error: Error) => {

@@ -481,3 +481,107 @@ export function formatWorldState(
 
     return lines.join('\n');
 }
+
+export type WorldDetail = 'brief' | 'full';
+
+/** A capped list that says how much it left out. */
+export interface WorldList<T> { total: number; items: T[] }
+
+/**
+ * Structured world snapshot for execute_code's structuredContent. Every key is
+ * always present (null when there's nothing), and lists are capped by `detail`
+ * alone - never by how much happens to be nearby - so code written against a
+ * small probe keeps working on a crowded tile.
+ */
+export interface WorldSummary {
+    tick: number;
+    inGame: boolean;
+    stateAgeMs: number | null;
+    player: {
+        name: string; combatLevel: number; x: number; z: number; level: number;
+        hp: number; maxHp: number; runEnergy: number; isDead: boolean;
+        inCombat: boolean; combatTargetIndex: number | null;
+    } | null;
+    skills: { name: string; level: number; baseLevel: number; xp: number }[];
+    inventory: { freeSlots: number; items: { slot: number; id: number; name: string; count: number }[] };
+    equipment: { slot: number; id: number; name: string }[];
+    dialog: { text: string | null; isWaiting: boolean; options: { index: number; text: string }[] } | null;
+    /** `options` dispatch by componentId (sdk.clickInterfaceOption), not by their display index. */
+    modal: { kind: 'shop' | 'bank' | 'trade' | 'ge' | 'interface'; interfaceId: number; options: { componentId: number; text: string }[] } | null;
+    nearby: {
+        npcs: WorldList<{ index: number; id: number; name: string; combatLevel: number; x: number; z: number; distance: number; hp: number | null; maxHp: number | null; inCombat: boolean; reachable: boolean | null; options: string[] }>;
+        players: WorldList<{ index: number; name: string; combatLevel: number; x: number; z: number; distance: number }>;
+        locs: WorldList<{ id: number; name: string; x: number; z: number; distance: number; reachable: boolean | null; options: string[] }>;
+        groundItems: WorldList<{ id: number; name: string; count: number; x: number; z: number; distance: number; reachable: boolean | null }>;
+    };
+    /** Messages newer than `sinceTick`, oldest first. */
+    messages: { chat: { from: string; text: string; private: boolean }[]; system: string[] };
+}
+
+const WORLD_LIMITS: Record<WorldDetail, { nearby: number; messages: number }> = {
+    brief: { nearby: 10, messages: 5 },
+    full: { nearby: 50, messages: 50 },
+};
+
+export function summarizeWorldState(
+    state: BotWorldState,
+    stateAgeMs?: number,
+    options?: { sinceTick?: number; detail?: WorldDetail }
+): WorldSummary {
+    const limits = WORLD_LIMITS[options?.detail ?? 'brief'];
+    const list = <S, T>(source: S[] | undefined, map: (item: S) => T): WorldList<T> =>
+        ({ total: source?.length ?? 0, items: (source ?? []).slice(0, limits.nearby).map(map) });
+    const stripCodes = (s: string) => s.replace(/@\w+@/g, '');
+    const fresh = (state.gameMessages ?? []).filter(m => m.tick > (options?.sinceTick ?? -1));
+    const p = state.player;
+
+    let modal: WorldSummary['modal'] = null;
+    const iface = state.interface?.isOpen ? state.interface : null;
+    const kind = state.trade?.isOpen ? 'trade' : state.ge?.isOpen ? 'ge' : state.shop?.isOpen ? 'shop' : state.bank?.isOpen ? 'bank' : iface || state.modalOpen ? 'interface' : null;
+    if (kind) {
+        modal = {
+            kind,
+            interfaceId: iface?.interfaceId ?? state.modalInterface,
+            options: (iface?.options ?? []).map(o => ({ componentId: o.componentId, text: o.text })),
+        };
+    }
+
+    return {
+        tick: state.tick,
+        inGame: state.inGame,
+        stateAgeMs: stateAgeMs ?? null,
+        player: p ? {
+            name: p.name, combatLevel: p.combatLevel, x: p.worldX, z: p.worldZ, level: p.level,
+            hp: p.hp, maxHp: p.maxHp, runEnergy: p.runEnergy, isDead: p.isDead,
+            inCombat: p.combat.inCombat, combatTargetIndex: p.combat.inCombat ? p.combat.targetIndex : null,
+        } : null,
+        skills: (state.skills ?? []).filter(s => !/^Stat\d+$/i.test(s.name))
+            .map(s => ({ name: s.name, level: s.level, baseLevel: s.baseLevel, xp: s.experience })),
+        inventory: {
+            freeSlots: 28 - (state.inventory ?? []).length,
+            items: (state.inventory ?? []).map(i => ({ slot: i.slot, id: i.id, name: i.name, count: i.count })),
+        },
+        equipment: (state.equipment ?? []).map(i => ({ slot: i.slot, id: i.id, name: i.name })),
+        dialog: state.dialog?.isOpen ? {
+            text: state.dialog.text ?? null,
+            isWaiting: state.dialog.isWaiting,
+            options: state.dialog.options.map(o => ({ index: o.index, text: o.text })),
+        } : null,
+        modal,
+        nearby: {
+            npcs: list(state.nearbyNpcs, n => ({
+                index: n.index, id: n.id, name: n.name, combatLevel: n.combatLevel, x: n.x, z: n.z, distance: n.distance,
+                hp: n.hp, maxHp: n.maxHp, inCombat: n.inCombat, reachable: n.reachable ?? null, options: n.options ?? [],
+            })),
+            players: list(state.nearbyPlayers, pl => ({ index: pl.index, name: pl.name, combatLevel: pl.combatLevel, x: pl.x, z: pl.z, distance: pl.distance })),
+            locs: list(state.nearbyLocs, l => ({ id: l.id, name: l.name, x: l.x, z: l.z, distance: l.distance, reachable: l.reachable ?? null, options: l.options ?? [] })),
+            groundItems: list(state.groundItems, g => ({ id: g.id, name: g.name, count: g.count, x: g.x, z: g.z, distance: g.distance, reachable: g.reachable ?? null })),
+        },
+        messages: {
+            chat: fresh.filter(m => isPlayerChat(m.type) && m.sender && !m.fromSelf).slice(-limits.messages)
+                .map(m => ({ from: m.sender, text: stripCodes(m.text), private: m.type === 3 || m.type === 7 })),
+            system: fresh.filter(m => !isPlayerChat(m.type)).slice(-limits.messages)
+                .map(m => (m.sender ? `${m.sender}: ` : '') + stripCodes(m.text)),
+        },
+    };
+}

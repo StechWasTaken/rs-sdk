@@ -52,9 +52,11 @@ model hiscore {
     level    Int
     value    Int
     playtime Int      @default(0)
+    playtime_ms BigInt @default(0)
     date     DateTime @default(now()) @updatedAt
 
     @@id([profile, type, account_id])
+    @@index([profile, type, level(sort: Desc), playtime_ms, account_id], map: "hiscore_duration_rank")
     @@index([profile, type, level(sort: Desc), playtime, account_id], map: "hiscore_rank")
 }
 
@@ -66,9 +68,11 @@ model hiscore_large {
     level    Int
     value    BigInt
     playtime Int      @default(0)
+    playtime_ms BigInt @default(0)
     date     DateTime @default(now()) @updatedAt
 
     @@id([profile, type, account_id])
+    @@index([profile, type, level(sort: Desc), playtime_ms, account_id], map: "hiscore_large_duration_rank")
     @@index([profile, type, level(sort: Desc), playtime, account_id], map: "hiscore_large_rank")
 }
 

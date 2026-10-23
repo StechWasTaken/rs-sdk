@@ -66,6 +66,12 @@ survival) is described in the project memory; this file is the human-readable ch
       Verify: `curl localhost:8888/api/version` and `curl 'localhost:8898/outdated-client?username=x'`.
 
 ### Database
+- [ ] **Checkpoint hot path** — `Player.save()` writes permanent nonzero varps in
+      one pass and backfills their count without changing save bytes. `MarketStore.checkpoint()`
+      compares save blobs inside SQLite to skip identical updates; keep the comparison
+      transactional (no JS cache) and retain whole-world recovery boundaries and FULL sync.
+      Verify: `bun test test/market.test.ts test/reconnect.test.ts`; benchmark:
+      `bun tools/bench/checkpoints.ts`; recovery: `bun test/market-recovery.ts`.
 - [ ] **Bun sqlite dialect** — `src/db/dialect/BunSqliteDialect*.ts` (3 files) + runtime chooser
       in `src/db/query.ts` (`typeof Bun !== 'undefined'` → bun:sqlite, else upstream's
       `node:sqlite`). Upstream is node-primary; **Bun does not implement `node:sqlite`** —

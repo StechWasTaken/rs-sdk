@@ -23,6 +23,8 @@ export class BotDisconnectedError extends Error {
 export interface ScriptContext {
     bot: BotActions;
     sdk: BotSDK;
+    /** JSON passed as MCP execute_code's `args` when it runs this file as a `script`; undefined under runScript(). */
+    args?: any;
 }
 
 export type ScriptFunction = (ctx: ScriptContext) => Promise<any>;
