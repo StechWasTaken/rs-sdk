@@ -4577,9 +4577,9 @@ export class BotActions {
     async activatePrayer(prayer: PrayerName | number): Promise<PrayerResult> {
         await this.dismissBlockingUI();
 
-        const index = typeof prayer === 'number' ? prayer : PRAYER_INDICES[prayer];
-        if (index === undefined || index < 0 || index > 14) {
-            return { success: false, message: `Invalid prayer: ${prayer}`, reason: 'invalid_prayer' };
+        const index = BotActions.prayerIndex(prayer);
+        if (index === undefined) {
+            return { success: false, message: `Invalid prayer: ${prayer} - one of ${PRAYER_NAMES.join(', ')}, or its index 0-14`, reason: 'invalid_prayer' };
         }
 
         const prayerName = PRAYER_NAMES[index];
@@ -4622,15 +4622,25 @@ export class BotActions {
     }
 
     /**
+     * The prayer's index from its index, its name, or the name the prayer book shows:
+     * 'Protect from Melee' and 'Protect Item' used to fail as invalid prayers.
+     */
+    private static prayerIndex(prayer: PrayerName | number | string): number | undefined {
+        if (typeof prayer === 'number') return Number.isInteger(prayer) && prayer >= 0 && prayer <= 14 ? prayer : undefined;
+        const key = String(prayer).toLowerCase().trim().replace(/[\s-]+/g, '_');
+        return PRAYER_INDICES[key as PrayerName] ?? PRAYER_INDICES[(key === 'protect_item' ? 'protect_items' : key) as PrayerName];
+    }
+
+    /**
      * Deactivate a prayer by name or index.
      * Checks if the prayer is actually active before toggling.
      */
     async deactivatePrayer(prayer: PrayerName | number): Promise<PrayerResult> {
         await this.dismissBlockingUI();
 
-        const index = typeof prayer === 'number' ? prayer : PRAYER_INDICES[prayer];
-        if (index === undefined || index < 0 || index > 14) {
-            return { success: false, message: `Invalid prayer: ${prayer}`, reason: 'invalid_prayer' };
+        const index = BotActions.prayerIndex(prayer);
+        if (index === undefined) {
+            return { success: false, message: `Invalid prayer: ${prayer} - one of ${PRAYER_NAMES.join(', ')}, or its index 0-14`, reason: 'invalid_prayer' };
         }
 
         const prayerName = PRAYER_NAMES[index];
